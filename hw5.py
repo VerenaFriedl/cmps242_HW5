@@ -15,7 +15,17 @@
 # Imports
 ##########
 
+import sys
 import numpy as np
+import math
+import random
+
+#from sklearn.feature_extraction.text import CountVectorizer
+#from sklearn.feature_extraction.text import TfidfVectorizer
+
+#import nltk
+#from nltk.corpus import stopwords
+
 
 ##########
 # Data
@@ -32,7 +42,7 @@ def readTweetData(filename):
     header = fileH.readline().rstrip().split(',')
     handles = []
     tweets = []
-    goodHandles = ["HillaryClinton", "realDonaldTrump"]
+    goodHandles = ["HillaryClinton", "realDonaldTrump","none"]
     for line in fileH.readlines():
         splitline = line.rstrip('\n').split(',')
 
@@ -44,12 +54,40 @@ def readTweetData(filename):
         else:
             tweets[len(tweets) - 1] = tweets[len(tweets) - 1] + "\n" + ','.join(splitline)
 
-    # test if data is read in correctly
-    # outfileH = open('./train_out.csv','w')
-    # outfileH.write(",".join(header) + "\n")
-    # for i in range(0, len(handles)):
-    #    outfileH.write(handles[i] + "," + tweets[i]+"\n")
+    # write to file to test if data is read in correctly (should be exactly the same as the input file)
+    #outfileH = open('./out.csv','w')
+    #outfileH.write(",".join(header) + "\n")
+    #for i in range(0, len(handles)):
+    #   outfileH.write(handles[i] + "," + tweets[i]+"\n")
 
     return handles, tweets
 
 handles, tweets = readTweetData("./train.csv")
+handles_test, tweets_test = readTweetData("./test.csv")
+
+
+def encodeLabels(list):
+    """
+    encode labels in 0 and 1 for comparing "HillaryClinton" = 1 to "realDonaldTrump" = 0
+    :param list: input labels
+    :return: numpy array with 0 and 1
+    """
+    labels = list
+    labels = [int(x == 'HillaryClinton') for x in labels]
+    labels = np.asarray(labels)
+    return labels
+
+trainLabels = encodeLabels(handles)
+
+
+"""
+# local path for the downloaded nltk data
+nltk.data.path.append("/Users/vfriedl/Google Drive/classes/cmps242/nltk_data")
+vectorizer = TfidfVectorizer(input='content',stop_words=stopwords.words('english'), decode_error='ignore', norm='l2')
+# merge train and test message lists for encoding
+trainAndTest = tweets + tweets_test
+X_trainAndTest = vectorizer.fit_transform(trainAndTest)
+# split encoded train and test data
+X = X_trainAndTest[:len(tweets)]
+X_test = X_trainAndTest[len(tweets):]
+"""
