@@ -20,11 +20,12 @@ import numpy as np
 import math
 import random
 
-#from sklearn.feature_extraction.text import CountVectorizer
-#from sklearn.feature_extraction.text import TfidfVectorizer
+import nltk
+from nltk.corpus import stopwords
 
-#import nltk
-#from nltk.corpus import stopwords
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
+
 
 
 ##########
@@ -34,7 +35,8 @@ import random
 
 def readTweetData(filename):
     """
-    Read in tweet collection of "HillaryClinton" and "realDonaldTrump". Other twitter handles would break this function.
+    Read in tweet collection of "HillaryClinton" and "realDonaldTrump" (or "none in case of test data). 
+    Other twitter handles would break this function.
     :param filename: File to read tweet data from.
     :return: list with handles and list with tweets; in order of file appearance.
     """
@@ -62,10 +64,6 @@ def readTweetData(filename):
 
     return handles, tweets
 
-handles, tweets = readTweetData("./train.csv")
-handles_test, tweets_test = readTweetData("./test.csv")
-
-
 def encodeLabels(list):
     """
     encode labels in 0 and 1 for comparing "HillaryClinton" = 1 to "realDonaldTrump" = 0
@@ -77,17 +75,32 @@ def encodeLabels(list):
     labels = np.asarray(labels)
     return labels
 
+def tokenizeTrainAndTest(trainData, testData):
+    """
+    
+    :param trainData: 
+    :param testData: 
+    :return: 
+    """
+    # local path for the downloaded nltk data
+    nltk.data.path.append("/Users/vfriedl/Google Drive/classes/cmps242/nltk_data")
+    vectorizer = TfidfVectorizer(input='content', stop_words=stopwords.words('english'), decode_error='ignore',
+                                 norm='l2')
+    # merge train and test message lists for encoding
+    trainAndTest = trainData + testData
+    X_trainAndTest = vectorizer.fit_transform(trainAndTest)
+    # split encoded train and test data
+    X = X_trainAndTest[:len(tweets)]
+    X_test = X_trainAndTest[len(tweets):]
+    return X, X_test
+
+
+handles, tweets = readTweetData("./train.csv")
+handles_test, tweets_test = readTweetData("./test.csv")
+
 trainLabels = encodeLabels(handles)
 
+X, X_test = tokenizeTrainAndTest(tweets,tweets_test)
 
-"""
-# local path for the downloaded nltk data
-nltk.data.path.append("/Users/vfriedl/Google Drive/classes/cmps242/nltk_data")
-vectorizer = TfidfVectorizer(input='content',stop_words=stopwords.words('english'), decode_error='ignore', norm='l2')
-# merge train and test message lists for encoding
-trainAndTest = tweets + tweets_test
-X_trainAndTest = vectorizer.fit_transform(trainAndTest)
-# split encoded train and test data
-X = X_trainAndTest[:len(tweets)]
-X_test = X_trainAndTest[len(tweets):]
-"""
+print(X.shape)
+print(X_test.shape)
