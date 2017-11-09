@@ -27,9 +27,8 @@ from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer
 
 
-
 ##########
-# Data
+# Functions and Classes
 ##########
 
 
@@ -64,9 +63,10 @@ def readTweetData(filename):
 
     return handles, tweets
 
+
 def encodeLabels(list):
     """
-    encode labels in 0 and 1 for comparing "HillaryClinton" = 1 to "realDonaldTrump" = 0
+    Encode labels in 0 and 1 for comparing "HillaryClinton" = 1 to "realDonaldTrump" = 0.
     :param list: input labels
     :return: numpy array with 0 and 1
     """
@@ -75,15 +75,16 @@ def encodeLabels(list):
     labels = np.asarray(labels)
     return labels
 
-def tokenizeTrainAndTest(trainData, testData):
+
+def tokenizeTrainAndTest(trainData, testData, stopword_path):
     """
-    
-    :param trainData: 
-    :param testData: 
-    :return: 
+    Tokenize the tweets.
+    :param trainData: list of training tweets.
+    :param testData: list of test tweets.
+    :return: tokenized training data, tokenized test data.
     """
     # local path for the downloaded nltk data
-    nltk.data.path.append("/Users/vfriedl/Google Drive/classes/cmps242/nltk_data")
+    nltk.data.path.append(stopword_path)
     vectorizer = TfidfVectorizer(input='content', stop_words=stopwords.words('english'), decode_error='ignore',
                                  norm='l2')
     # merge train and test message lists for encoding
@@ -95,12 +96,20 @@ def tokenizeTrainAndTest(trainData, testData):
     return X, X_test
 
 
+##########
+# Main
+##########
+
+# Set this to your local path
+local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
+
+
 handles, tweets = readTweetData("./train.csv")
 handles_test, tweets_test = readTweetData("./test.csv")
 
 trainLabels = encodeLabels(handles)
 
-X, X_test = tokenizeTrainAndTest(tweets,tweets_test)
+X, X_test = tokenizeTrainAndTest(tweets, tweets_test, local_path_to_nltk_stopwords)
 
 print(X.shape)
 print(X_test.shape)
