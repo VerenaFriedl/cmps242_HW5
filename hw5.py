@@ -100,16 +100,24 @@ def tokenizeTrainAndTest(trainData, testData, stopword_path):
 # Main
 ##########
 
-# Set this to your local path
+# Set this to your local path.
 local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
+# Global index for clinton and trump
+clinton_index = 0
+trump_index = 1
 
+# Read in data
 handles, tweets = readTweetData("./train.csv")
 handles_test, tweets_test = readTweetData("./test.csv")
 
-trainLabels = encodeLabels(handles)
+# Encode tweet handles in two binary attributes
+labels_hillary = encodeLabels(handles)
+labels_trump = np.asarray([abs(x-1) for x in labels_hillary])
+Y = np.matrix([labels_hillary, labels_trump]).T
+print(Y.shape)
 
+# Tokenize training and test data
 X, X_test = tokenizeTrainAndTest(tweets, tweets_test, local_path_to_nltk_stopwords)
-
 print(X.shape)
 print(X_test.shape)
