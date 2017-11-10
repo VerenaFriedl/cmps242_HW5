@@ -22,6 +22,8 @@ import math
 import random
 import collections
 import nltk
+import csv
+
 from nltk.corpus import stopwords
 
 from sklearn.feature_extraction.text import CountVectorizer
@@ -170,8 +172,6 @@ def train_variable_summaries(var):
 
 ########
 # hyperparameters
-batch_size = 5
-training = True
 shuffle_buffer_size = 50
 prefetch_buffer_size = 5
 # number of iterations through all training data
@@ -180,8 +180,21 @@ n_epochs = 10
 n_hidden = 10
 forget_bias = 5
 learning_rate = 0.001
+#######################
+# set output dir for saving model
+output_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
+model_name = "2blstm_fnn"
+# path to trained model and model dir
+trained_model = tf.train.latest_checkpoint("/Users/andrewbailey/git/cmps242_HW5/logs")
+print("trained model path", trained_model)
+# trained_model = "/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
+trained_model_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
+training_iters = 1000
 ########
-
+training = False
+# goes really fast when batch size is high
+batch_size = 300
+output_csv = "/Users/andrewbailey/git/cmps242_HW5/test_submission.csv"
 
 # there is way easier to use a feed_dict for the sess.run section at the bottom but I had this code so I implemented it
 def create_dataset():
@@ -202,9 +215,9 @@ def create_dataset():
         dataset = dataset.repeat(n_epochs)
         dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
     else:
-        dataset = tf.data.Dataset.zip((batchX, batchSeq))
+        dataset = tf.data.Dataset.zip((datasetX, datasetSeq))
         # maybe we can do this bud idk how it works at end of dataset
-        # dataset = dataset.batch(batch_size)
+        dataset = dataset.batch(batch_size)
 
     # prefetch data to make computation quicker so the graph doesnt have to wait for data to be transferred
     dataset = dataset.prefetch(buffer_size=prefetch_buffer_size)
@@ -218,14 +231,15 @@ def create_dataset():
 if training:
     with tf.variable_scope("training_data"):
         place_X_train, place_Seq_train, place_Y_train, iterator_train = create_dataset()
+        x_train, seq_len_train, y_train = iterator_train.get_next()
     with tf.variable_scope("validation_data"):
         place_X_val, place_Seq_val, place_Y_val, iterator_val = create_dataset()
-    x_train, seq_len_train, y_train = iterator_train.get_next()
-    x_val, seq_len_val, y_val = iterator_val.get_next()
+        x_val, seq_len_val, y_val = iterator_val.get_next()
 else:
     with tf.variable_scope("test_data"):
         place_X_test, place_Seq_test, place_Y_test, iterator_test = create_dataset()
-    x, seq_len = iterator.get_next()
+        x_test, seq_len_test = iterator_test.get_next()
+
 
 
 def create_graph(x, seq_len):
@@ -335,17 +349,6 @@ else:
 #######################
 # graph has been completed
 #######################
-
-# set output dir for saving model
-output_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
-model_name = "2blstm_fnn"
-# path to trained model and model dir
-trained_model = "some/path"
-trained_model_dir = "another/path"
-
-training_iters = 1000
-
-########
 # create config for training session
 config = tf.ConfigProto(log_device_placement=False,
                         intra_op_parallelism_threads=8,
@@ -421,16 +424,32 @@ with tf.Session(config=config) as sess:
                           "{:.5f}".format(val_acc), file=sys.stderr)
 
                     saver.save(sess, save_model_path,
-                               global_step=global_stept, write_meta_graph=write_once)
+                               global_step=global_step1, write_meta_graph=write_once)
                     write_once = False
         # catches errors if dataset is finished all epochs
         # increase epochs if we have not converged
         except tf.errors.OutOfRangeError:
             print("End of dataset")
     else:
-        for i in range(len(test_data.input)):
-            prob = sess.run([test_probs])
-            print(i, prob)
+        all_data_list = []
+        try:
+            while True:
+                prob, xt = sess.run([test_probs, x_test])
+                # print(xt == train_vectorizer.transform([tweets_test[i]]).toarray())
+                all_data_list.extend(np.vstack(prob))
+                print(len(all_data_list))
+        except tf.errors.OutOfRangeError:
+            print("End of dataset")
+        # make sure we got all the data
+        assert len(tweets_test) == len(all_data_list)
+        # write out file
+        with open(output_csv, 'w+') as csv_file:
+            spamwriter = csv.writer(csv_file, delimiter=',')  # ,quotechar='|', quoting=csv.QUOTE_MINIMAL)
+            spamwriter.writerow(["id", "realDonaldTrump", "HillaryClinton"])
+            spamwriter.writerows([[i, x[1], x[0]] for i, x in enumerate(all_data_list)])
 # close session and writer
 sess.close()
 writer.close()
+
+
+
