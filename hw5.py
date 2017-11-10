@@ -77,10 +77,9 @@ def encodeLabels(list):
     :return: numpy array with 0 and 1
     """
     labels = list
-    labels = [[int(x == 'realDonaldTrump')] for x in labels]
+    labels = [[int(x == 'HillaryClinton'), int(x == 'realDonaldTrump')] for x in labels]
     labels = np.asarray(labels)
     return labels
-
 
 def tokenizeTrainAndTest(trainData, stopword_path):
     """
@@ -112,6 +111,8 @@ local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk
 # Read in data
 handles, tweets = readTweetData("./train.csv")
 handles_test, tweets_test = readTweetData("./test.csv")
+
+
 
 # Tokenize training and test data
 X, train_vectorizer = tokenizeTrainAndTest(tweets, local_path_to_nltk_stopwords)
@@ -173,7 +174,7 @@ def train_variable_summaries(var):
 ########
 # hyperparameters
 shuffle_buffer_size = 50
-prefetch_buffer_size = 5
+prefetch_buffer_size = 50
 # number of iterations through all training data
 n_epochs = 10
 # number of hidden nodes in blstm
@@ -182,19 +183,19 @@ forget_bias = 5
 learning_rate = 0.001
 #######################
 # set output dir for saving model
-output_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
+output_dir = "/home/ubuntu/cmps242_HW5/logs"
 model_name = "2blstm_fnn"
 # path to trained model and model dir
-trained_model = tf.train.latest_checkpoint("/Users/andrewbailey/git/cmps242_HW5/logs")
+trained_model = tf.train.latest_checkpoint("/home/ubuntu/cmps242_HW5/logs")
 print("trained model path", trained_model)
 # trained_model = "/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
-trained_model_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
+trained_model_dir = "/home/ubuntu/cmps242_HW5/logs"
 training_iters = 1000
 ########
 training = True
 # goes really fast when batch size is high
-batch_size = 2
-output_csv = "/Users/andrewbailey/git/cmps242_HW5/test_submission.csv"
+batch_size = 50
+output_csv = "/home/ubuntu/cmps242_HW5/test_submission.csv"
 
 # there is way easier to use a feed_dict for the sess.run section at the bottom but I had this code so I implemented it
 def create_dataset():
@@ -293,7 +294,7 @@ def create_graph(x, seq_len):
 # initializing a step variable
 global_step = tf.Variable(0, name='global_step', trainable=False)
 # if computer has nvidia-smi gpu
-GPU = False
+GPU = True
 
 if training:
     # variable scope is to allow reuse of weights betwen validation graph and training grapb
@@ -402,7 +403,7 @@ with tf.Session(config=config) as sess:
                 _ = sess.run([train_op])
                 step += 1
                 # get training accuracy stats
-                if step % 1 == 0:
+                if step % 10 == 0:
                     summary_v, val_acc, val_cost1 = sess.run([val_summary,
                                                              val_accuracy,
                                                              val_cost])
@@ -446,7 +447,7 @@ with tf.Session(config=config) as sess:
         with open(output_csv, 'w+') as csv_file:
             spamwriter = csv.writer(csv_file, delimiter=',')  # ,quotechar='|', quoting=csv.QUOTE_MINIMAL)
             spamwriter.writerow(["id", "realDonaldTrump", "HillaryClinton"])
-            spamwriter.writerows([[i, x, 1-x] for i, x in enumerate(all_data_list)])
+            spamwriter.writerows([[i, x[0], 1-x[0]] for i, x in enumerate(all_data_list)])
 # close session and writer
 sess.close()
 writer.close()
