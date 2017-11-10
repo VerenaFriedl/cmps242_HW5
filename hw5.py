@@ -80,24 +80,20 @@ def encodeLabels(list):
     return labels
 
 
-def tokenizeTrainAndTest(trainData, testData, stopword_path):
+def tokenizeTrainAndTest(trainData, stopword_path):
     """
     Tokenize the tweets.
     :param trainData: list of training tweets.
-    :param testData: list of test tweets.
-    :return: tokenized training data, tokenized test data.
+    :return: tokenized training data, vectorizer.
     """
     # local path for the downloaded nltk data
     nltk.data.path.append(stopword_path)
     vectorizer = TfidfVectorizer(input='content', stop_words=stopwords.words('english'), decode_error='ignore',
                                  norm='l2')
-    # merge train and test message lists for encoding
-    trainAndTest = trainData + testData
-    X_trainAndTest = vectorizer.fit_transform(trainAndTest).toarray()
+    X = vectorizer.fit_transform(trainData).toarray()
+
     # split encoded train and test data
-    X = X_trainAndTest[:len(tweets)]
-    X_test = X_trainAndTest[len(tweets):]
-    return X, X_test
+    return X, vectorizer
 
 
 ##########
@@ -115,27 +111,63 @@ trump_index = 1
 handles, tweets = readTweetData("./train.csv")
 handles_test, tweets_test = readTweetData("./test.csv")
 
+# Tokenize training and test data
+X, train_vectorizer = tokenizeTrainAndTest(tweets, local_path_to_nltk_stopwords)
+X_test = train_vectorizer.transform(tweets_test).toarray()
+
 # Encode tweet handles in two binary attributes
 Y = encodeLabels(handles)
-# labels_trump = np.asarray([abs(x-1) for x in labels_hillary])
-# Y = np.matrix([labels_hillary, labels_trump]).T
 print("Y.shape", Y.shape)
 
-# Tokenize training and test data
-X, X_test = tokenizeTrainAndTest(tweets, tweets_test, local_path_to_nltk_stopwords)
-print("X.shape", X.shape)
-# print(X_test.shape)
-input_vector_len = X.shape[1]
-label_vector_len = Y.shape[1]
-train_seq_length = [input_vector_len for x in range(X.shape[0])]
+# create validation dataset we should randomize this but it works for now
+len_val_set = 1000
+X_train = X[len_val_set:]
+X_val = X[:len_val_set]
+Y_train = Y[len_val_set:]
+Y_val = Y[:len_val_set]
+
+print("X.shape", X_train.shape)
+input_vector_len = X_train.shape[1]
+label_vector_len = Y.shape[1]  # 2
+train_seq_length = [input_vector_len for x in range(X_train.shape[0])]
 test_seq_length = [input_vector_len for x in range(X_test.shape[0])]
+val_seq_length = [input_vector_len for x in range(X_test.shape[0])]
 
 # expected data input format
 training_labels = collections.namedtuple('training_data', ['input', 'seq_len', 'label'])
 inference_labels = collections.namedtuple('inference_data', ['input', 'seq_len'])
 
-train_data = training_labels(input=X, seq_len=train_seq_length, label=Y)
+train_data = training_labels(input=X_train, seq_len=train_seq_length, label=Y_train)
+val_data = training_labels(input=X_val, seq_len=val_seq_length, label=Y_val)
 test_data = inference_labels(input=X_test, seq_len=test_seq_length)
+
+# keep track of data using tensorboard (tensorboard --logdir logs)
+training_summaries = []
+validation_summaries = []
+
+
+def val_variable_summaries(var):
+    """Attach a lot of summaries to a Tensor (for TensorBoard visualization).
+    source: https://github.com/tensorflow/tensorflow/blob/r1.1/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py
+    """
+    with tf.name_scope("validation"):
+        with tf.name_scope('summaries'):
+            mean = tf.reduce_mean(var)
+            summary = tf.summary.scalar('mean', mean)
+            validation_summaries.append(summary)
+
+
+def train_variable_summaries(var):
+    """Attach a lot of summaries to a Tensor (for TensorBoard visualization).
+    source: https://github.com/tensorflow/tensorflow/blob/r1.1/tensorflow/examples/tutorials/mnist/mnist_with_summaries.py
+    """
+    with tf.name_scope("training"):
+        with tf.name_scope('summaries'):
+            mean = tf.reduce_mean(var)
+            summary = tf.summary.scalar('mean', mean)
+            training_summaries.append(summary)
+
+
 ########
 # hyperparameters
 batch_size = 5
@@ -149,101 +181,156 @@ n_hidden = 10
 forget_bias = 5
 learning_rate = 0.001
 ########
-# create placeholders for the values we are going to feed into the network
-place_X = tf.placeholder(tf.float32, shape=[None, input_vector_len], name='Input')
-place_Seq = tf.placeholder(tf.int32, shape=[None], name='Sequence_Length')
-place_Y = tf.placeholder(tf.int32, shape=[None, label_vector_len], name='Label')
 
-# create dataset objects which will allow us to use the Dataset class from tensorflow which deals with
-# the queue operations and the flow of data into the graph
-datasetX = tf.data.Dataset.from_tensor_slices(place_X)
-datasetSeq = tf.data.Dataset.from_tensor_slices(place_Seq)
-datasetY = tf.data.Dataset.from_tensor_slices(place_Y)
 
-# batch the data into the batch size we want
-batchX = datasetX.batch(batch_size)
-batchSeq = datasetSeq.batch(batch_size)
-batchY = datasetY.batch(batch_size)
+# there is way easier to use a feed_dict for the sess.run section at the bottom but I had this code so I implemented it
+def create_dataset():
+    """Create placeholders for data and iterator"""
+    # create placeholders for the values we are going to feed into the network
+    place_X = tf.placeholder(tf.float32, shape=[None, input_vector_len], name='Input')
+    place_Seq = tf.placeholder(tf.int32, shape=[None], name='Sequence_Length')
+    place_Y = tf.placeholder(tf.int32, shape=[None, label_vector_len], name='Label')
+    # create dataset objects which will allow us to use the Dataset class from tensorflow which deals with
+    # the queue operations and the flow of data into the graph
+    datasetX = tf.data.Dataset.from_tensor_slices(place_X)
+    datasetSeq = tf.data.Dataset.from_tensor_slices(place_Seq)
+    datasetY = tf.data.Dataset.from_tensor_slices(place_Y)
 
+    if training:
+        dataset = tf.data.Dataset.zip((datasetX, datasetSeq, datasetY))
+        dataset = dataset.batch(batch_size)
+        dataset = dataset.repeat(n_epochs)
+        dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
+    else:
+        dataset = tf.data.Dataset.zip((batchX, batchSeq))
+        # maybe we can do this bud idk how it works at end of dataset
+        # dataset = dataset.batch(batch_size)
+
+    # prefetch data to make computation quicker so the graph doesnt have to wait for data to be transferred
+    dataset = dataset.prefetch(buffer_size=prefetch_buffer_size)
+
+    # create iterator which will iterate through dataset
+    iterator = dataset.make_initializable_iterator()
+    return place_X, place_Seq, place_Y, iterator
+
+
+# create placeholders
 if training:
-    dataset = tf.data.Dataset.zip((batchX, batchSeq, batchY))
-    dataset = dataset.repeat(n_epochs)
-    dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
+    with tf.variable_scope("training_data"):
+        place_X_train, place_Seq_train, place_Y_train, iterator_train = create_dataset()
+    with tf.variable_scope("validation_data"):
+        place_X_val, place_Seq_val, place_Y_val, iterator_val = create_dataset()
+    x_train, seq_len_train, y_train = iterator_train.get_next()
+    x_val, seq_len_val, y_val = iterator_val.get_next()
 else:
-    dataset = tf.data.Dataset.zip((batchX, batchSeq))
-
-# prefetch data to make computation quicker so the graph doesnt have to wait for data to be transferred
-dataset = dataset.prefetch(buffer_size=prefetch_buffer_size)
-
-# create iterator which will iterate through dataset
-iterator = dataset.make_initializable_iterator()
-
-if training:
-    x, seq_len, y = iterator.get_next()
-else:
+    with tf.variable_scope("test_data"):
+        place_X_test, place_Seq_test, place_Y_test, iterator_test = create_dataset()
     x, seq_len = iterator.get_next()
 
-# reshape for blstm layer
-input = tf.reshape(x, shape=[-1, input_vector_len, 1])
-print(input.get_shape())
 
-with tf.variable_scope("BLSTM_layer1"):
-    # Forward direction cell
-    lstm_fw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
-    # Backward direction cell
-    lstm_bw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
+def create_graph(x, seq_len):
+    """Create graph using outputs from iterators"""
+    # reshape for blstm layer
+    input = tf.reshape(x, shape=[-1, input_vector_len, 1])
+    print("input shape", input.get_shape())
+    with tf.variable_scope("BLSTM_layer1"):
+        # Forward direction cell
+        lstm_fw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
+        # Backward direction cell
+        lstm_bw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
 
-    # returns output nodes and the hidden states
-    outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell,
-                                                 lstm_bw_cell, input,
-                                                 dtype=tf.float32,
-                                                 sequence_length=seq_len)
-    # concat two output layers so we can treat as single output layer
-    output = tf.concat(outputs, 2)
+        # returns output nodes and the hidden states
+        outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell,
+                                                     lstm_bw_cell, input,
+                                                     dtype=tf.float32,
+                                                     sequence_length=seq_len)
+        # concat two output layers so we can treat as single output layer
+        output = tf.concat(outputs, 2)
 
-with tf.variable_scope("BLSTM_layer2"):
-    # Forward direction cell
-    lstm_fw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
-    # Backward direction cell
-    lstm_bw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
-    # returns output nodes and the hidden states
-    outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, output,
-                                                 dtype=tf.float32,
-                                                 sequence_length=seq_len)
-    # concat two output layers so we can treat as single output layer
-    output = tf.concat(outputs, 2)
+    with tf.variable_scope("BLSTM_layer2"):
+        # Forward direction cell
+        lstm_fw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
+        # Backward direction cell
+        lstm_bw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
+        # returns output nodes and the hidden states
+        outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, output,
+                                                     dtype=tf.float32,
+                                                     sequence_length=seq_len)
+        # concat two output layers so we can treat as single output layer
+        output = tf.concat(outputs, 2)
 
-print(output.get_shape())
-output_reshape_2 = tf.reshape(output, [-1, 2 * n_hidden * input_vector_len])
-print(output_reshape_2.get_shape())
+    print(output.get_shape())
+    output_reshape_2 = tf.reshape(output, [-1, 2 * n_hidden * input_vector_len])
+    print(output_reshape_2.get_shape())
 
-# create fully connected input layer
-with tf.variable_scope("Full_conn_layer1"):
-    input_dim = int(output_reshape_2.get_shape()[1])
-    weights = tf.get_variable(name="weights", shape=[input_dim, label_vector_len],
-                              initializer=tf.random_normal_initializer(stddev=np.sqrt(2.0 / (2 * label_vector_len))))
-    bias = tf.get_variable(name="bias", shape=[label_vector_len],
-                           initializer=tf.zeros_initializer)
+    # create fully connected input layer
+    with tf.variable_scope("Full_conn_layer1"):
+        input_dim = int(output_reshape_2.get_shape()[1])
+        weights = tf.get_variable(name="weights", shape=[input_dim, label_vector_len],
+                                  initializer=tf.random_normal_initializer(stddev=np.sqrt(2.0 / (2 * label_vector_len))))
+        bias = tf.get_variable(name="bias", shape=[label_vector_len],
+                               initializer=tf.zeros_initializer)
 
-    # could put activation function here but the loss function completes this for us
-    final_output = tf.nn.bias_add(tf.matmul(output_reshape_2, weights), bias)
+        # could put activation function here but the loss function completes this for us
+        final_output = tf.nn.bias_add(tf.matmul(output_reshape_2, weights), bias)
+    return final_output
 
-print(final_output.get_shape())
 
-# create get index of each argument
-y_label_indices = tf.argmax(y, 1, name="y_label_indices")
-
-# loss function
-loss1 = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=final_output,
-                                                       labels=y_label_indices)
-# minimize average loss over entire batch
-cost = tf.reduce_mean(loss1)
-
-predict = tf.equal(tf.argmax(final_output, 1), tf.argmax(y, 1))
-accuracy = tf.reduce_mean(tf.cast(predict, tf.float32))
+# initializing a step variable
 global_step = tf.Variable(0, name='global_step', trainable=False)
+# if computer has nvidia-smi gpu
+GPU = False
 
-train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(cost, global_step=global_step)
+if training:
+    # variable scope is to allow reuse of weights betwen validation graph and training grapb
+    if GPU:
+        device = '/gpu:0'
+    else:
+        device = '/cpu:0'
+
+    with tf.variable_scope("graph", reuse=tf.AUTO_REUSE) and tf.device(device):
+        train_output = create_graph(x_train, seq_len_train)
+        print(train_output.get_shape())
+        # create get index of each argument
+        y_label_indices = tf.argmax(y_train, 1, name="y_label_indices")
+        # loss function
+        loss1 = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=train_output,
+                                                               labels=y_label_indices)
+        # minimize average loss over entire batch
+        train_cost = tf.reduce_mean(loss1)
+        # add cost to variable summary so we can track using tensorboard
+        train_variable_summaries(train_cost)
+        # create optimizer
+        train_op = tf.train.AdamOptimizer(learning_rate=learning_rate).minimize(train_cost, global_step=global_step)
+
+        # create prediction by comparing index from output and label then getting the mean
+        train_predict = tf.equal(tf.argmax(train_output, 1), tf.argmax(y_train, 1))
+        train_accuracy = tf.reduce_mean(tf.cast(train_predict, tf.float32))
+        train_variable_summaries(train_accuracy)
+
+    with tf.variable_scope("graph", reuse=tf.AUTO_REUSE):
+        # create graph and
+        val_output = create_graph(x_val, seq_len_val)
+        # loss function
+        y_label_indices_val = tf.argmax(y_val, 1, name="y_label_indices")
+        val_loss1 = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=val_output,
+                                                                   labels=y_label_indices_val)
+        # minimize average loss over entire batch
+        val_cost = tf.reduce_mean(val_loss1)
+        train_variable_summaries(val_cost)
+        # create prediction by comparing index from output and label then getting the mean
+        val_predict = tf.equal(tf.argmax(val_output, 1), tf.argmax(y_val, 1))
+        val_accuracy = tf.reduce_mean(tf.cast(val_predict, tf.float32))
+        # add accuracy to variable summary so we can track using tensorboard
+        val_variable_summaries(val_accuracy)
+
+    val_summary = tf.summary.merge(validation_summaries)
+    train_summary = tf.summary.merge(training_summaries)
+else:
+    test_output = create_graph(x_test, seq_len_test)
+    print(test_output.get_shape())
+    # create get index of each argument
+    test_probs = tf.nn.softmax(test_output)
 
 #######################
 # graph has been completed
@@ -287,45 +374,63 @@ with tf.Session(config=config) as sess:
 
     # load data into placeholders
     if training:
-        sess.run(iterator.initializer,
-                 feed_dict={place_X: train_data.input,
-                            place_Y: train_data.label,
-                            place_Seq: train_data.seq_len})
+        sess.run(iterator_train.initializer,
+                 feed_dict={place_X_train: train_data.input,
+                            place_Y_train: train_data.label,
+                            place_Seq_train: train_data.seq_len})
+        sess.run(iterator_val.initializer,
+                 feed_dict={place_X_val: val_data.input,
+                            place_Y_val: val_data.label,
+                            place_Seq_val: val_data.seq_len})
     else:
-        sess.run(iterator.initializer,
-                 feed_dict={place_X: train_data.input,
-                            place_Seq: train_data.seq_len})
+        sess.run(iterator_test.initializer,
+                 feed_dict={place_X_test: test_data.input,
+                            place_Seq_test: test_data.seq_len})
 
-    # Keep training until reach max iterations
-    print("Training Has Started!", file=sys.stderr)
-    step = 0
-    # we only want to write the meta graph once cause it is so big
-    write_once = True
-    try:
-        while step < training_iters:
-            # Run optimization training step
-            _ = sess.run([train_op])
-            step += 1
-            # get training accuracy stats
-            if step % 10 == 0:
-                global_step1, train_acc, train_cost = sess.run([global_step,
-                                                               accuracy,
-                                                               cost])
-                # add summary statistics
-                # writer.add_summary(summary, global_step)
-                # print summary stats
-                print("Iter " + str(global_step1) + ", Training Cost= " +
-                      "{:.6f}".format(train_cost) + ", Training Accuracy= " +
-                      "{:.5f}".format(train_acc), file=sys.stderr)
-                # if it has been enough time save model and print training stats
+    if training:
+        # Keep training until reach max iterations
+        print("Training Has Started!", file=sys.stderr)
+        step = 0
+        # we only want to write the meta graph once cause it is so big
+        write_once = True
+        try:
+            while step < training_iters:
+                # Run optimization training step
+                _ = sess.run([train_op])
+                step += 1
+                # get training accuracy stats
+                if step % 10 == 0:
+                    summary_v, val_acc, val_cost = sess.run([val_summary,
+                                                             val_accuracy,
+                                                             val_cost])
+                    summary_t, global_step1, train_acc, train_cost = sess.run([train_summary, global_step,
+                                                                                 train_accuracy,
+                                                                                 train_cost])
 
-                saver.save(sess, save_model_path,
-                           global_step=global_step, write_meta_graph=write_once)
-                write_once = False
-    # catches errors if dataset is finished all epochs
-    # increase epochs if we have not converged
-    except tf.errors.OutOfRangeError:
-        print("End of dataset")
+                    # add summary statistics
+                    writer.add_summary(summary_t, global_step1)
+                    writer.add_summary(summary_v, global_step1)
+
+                    # print summary stats
+                    print("Iter " + str(global_step1) + ", Training Cost= " +
+                          "{:.6f}".format(train_cost) + ", Validation Cost= " +
+                          "{:.5f}".format(val_cost), file=sys.stderr)
+                    # if it has been enough time save model and print training stats
+                    print("Iter " + str(global_step1) + ", Training Accuracy= " +
+                          "{:.6f}".format(train_acc) + ", Validation Accuracy= " +
+                          "{:.5f}".format(val_acc), file=sys.stderr)
+
+                    saver.save(sess, save_model_path,
+                               global_step=global_stept, write_meta_graph=write_once)
+                    write_once = False
+        # catches errors if dataset is finished all epochs
+        # increase epochs if we have not converged
+        except tf.errors.OutOfRangeError:
+            print("End of dataset")
+    else:
+        for i in range(len(test_data.input)):
+            prob = sess.run([test_probs])
+            print(i, prob)
 # close session and writer
 sess.close()
 writer.close()
