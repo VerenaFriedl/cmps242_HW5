@@ -1,0 +1,2 @@
+model_checkpoint_path: "/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
+all_model_checkpoint_paths: "/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
