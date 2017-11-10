@@ -77,7 +77,7 @@ def encodeLabels(list):
     :return: numpy array with 0 and 1
     """
     labels = list
-    labels = [[int(x == 'HillaryClinton'), int(x != 'HillaryClinton')] for x in labels]
+    labels = [[int(x == 'realDonaldTrump')] for x in labels]
     labels = np.asarray(labels)
     return labels
 
@@ -97,7 +97,6 @@ def tokenizeTrainAndTest(trainData, stopword_path):
     # split encoded train and test data
     return X, vectorizer
 
-
 ##########
 # Main
 ##########
@@ -106,8 +105,9 @@ def tokenizeTrainAndTest(trainData, stopword_path):
 local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
 # Global index for clinton and trump
-clinton_index = 0
-trump_index = 1
+# clinton_index = 0
+# trump_index = 1
+# We are now classifying if a tweet is from realDonaldTrump or not
 
 # Read in data
 handles, tweets = readTweetData("./train.csv")
@@ -191,9 +191,9 @@ print("trained model path", trained_model)
 trained_model_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
 training_iters = 1000
 ########
-training = False
+training = True
 # goes really fast when batch size is high
-batch_size = 300
+batch_size = 2
 output_csv = "/Users/andrewbailey/git/cmps242_HW5/test_submission.csv"
 
 # there is way easier to use a feed_dict for the sess.run section at the bottom but I had this code so I implemented it
@@ -402,11 +402,11 @@ with tf.Session(config=config) as sess:
                 _ = sess.run([train_op])
                 step += 1
                 # get training accuracy stats
-                if step % 10 == 0:
-                    summary_v, val_acc, val_cost = sess.run([val_summary,
+                if step % 1 == 0:
+                    summary_v, val_acc, val_cost1 = sess.run([val_summary,
                                                              val_accuracy,
                                                              val_cost])
-                    summary_t, global_step1, train_acc, train_cost = sess.run([train_summary, global_step,
+                    summary_t, global_step1, train_acc, train_cost1 = sess.run([train_summary, global_step,
                                                                                  train_accuracy,
                                                                                  train_cost])
 
@@ -416,8 +416,8 @@ with tf.Session(config=config) as sess:
 
                     # print summary stats
                     print("Iter " + str(global_step1) + ", Training Cost= " +
-                          "{:.6f}".format(train_cost) + ", Validation Cost= " +
-                          "{:.5f}".format(val_cost), file=sys.stderr)
+                          "{:.6f}".format(train_cost1) + ", Validation Cost= " +
+                          "{:.5f}".format(val_cost1), file=sys.stderr)
                     # if it has been enough time save model and print training stats
                     print("Iter " + str(global_step1) + ", Training Accuracy= " +
                           "{:.6f}".format(train_acc) + ", Validation Accuracy= " +
@@ -446,7 +446,7 @@ with tf.Session(config=config) as sess:
         with open(output_csv, 'w+') as csv_file:
             spamwriter = csv.writer(csv_file, delimiter=',')  # ,quotechar='|', quoting=csv.QUOTE_MINIMAL)
             spamwriter.writerow(["id", "realDonaldTrump", "HillaryClinton"])
-            spamwriter.writerows([[i, x[1], x[0]] for i, x in enumerate(all_data_list)])
+            spamwriter.writerows([[i, x, 1-x] for i, x in enumerate(all_data_list)])
 # close session and writer
 sess.close()
 writer.close()
