@@ -23,6 +23,7 @@ import random
 import collections
 import nltk
 import csv
+from collections import defaultdict
 
 from nltk.corpus import stopwords
 
@@ -81,6 +82,7 @@ def encodeLabels(list):
     labels = np.asarray(labels)
     return labels
 
+
 def tokenizeTrainAndTest(trainData, stopword_path):
     """
     Tokenize the tweets.
@@ -96,6 +98,28 @@ def tokenizeTrainAndTest(trainData, stopword_path):
     # split encoded train and test data
     return X, vectorizer
 
+
+def create_glove_dict(glove_path):
+    """Create dictionary of words from twitter glove (Global Vectors for Word Representation) data"""
+    assert os.path.isfile(glove_path)
+    glove = defaultdict(list)
+    with open(glove_path, 'r') as glove_f:
+        for line in glove_f:
+            line = line.split()
+            glove[line[0]] = [float(x) for x in line[1:]]
+    return glove
+
+
+def word_2_vec(sentences, glove):
+    """Covert words to vectors from twitter glove (Global Vectors for Word Representation) data"""
+    out_data = []
+    for sentence in sentences:
+        words = sentence.split()
+        data = np.asarray([glove[word] for word in words])
+        out_data.append(data)
+    return np.asarray(out_data)
+
+
 ##########
 # Main
 ##########
@@ -104,19 +128,24 @@ def tokenizeTrainAndTest(trainData, stopword_path):
 local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
 # Global index for clinton and trump
-# clinton_index = 0
-# trump_index = 1
-# We are now classifying if a tweet is from realDonaldTrump or not
+clinton_index = 0
+trump_index = 1
 
 # Read in data
 handles, tweets = readTweetData("./train.csv")
 handles_test, tweets_test = readTweetData("./test.csv")
 
-
-
 # Tokenize training and test data
-X, train_vectorizer = tokenizeTrainAndTest(tweets, local_path_to_nltk_stopwords)
-X_test = train_vectorizer.transform(tweets_test).toarray()
+# X, train_vectorizer = tokenizeTrainAndTest(tweets, local_path_to_nltk_stopwords)
+# X_test = train_vectorizer.transform(tweets_test).toarray()
+
+# (Global Vectors for Word Representation)
+# place to get glove data https://nlp.stanford.edu/projects/glove/
+path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/test.twitter.10.50d.txt"
+glove = create_glove_dict(path_to_glove_twitter)
+
+X = word_2_vec(tweets, glove)
+X_test = word_2_vec(tweets_test, glove)
 
 # Encode tweet handles in two binary attributes
 Y = encodeLabels(handles)
@@ -130,11 +159,13 @@ Y_train = Y[len_val_set:]
 Y_val = Y[:len_val_set]
 
 print("X.shape", X_train.shape)
-input_vector_len = X_train.shape[1]
 label_vector_len = Y.shape[1]  # 2
-train_seq_length = [input_vector_len for x in range(X_train.shape[0])]
-test_seq_length = [input_vector_len for x in range(X_test.shape[0])]
-val_seq_length = [input_vector_len for x in range(X_test.shape[0])]
+input_vector_len = 50  # 2
+
+train_seq_length = [len(x) for x in X_train]
+val_seq_length = [len(x) for x in X_val]
+
+test_seq_length = [len(x) for x in X_test]
 
 # expected data input format
 training_labels = collections.namedtuple('training_data', ['input', 'seq_len', 'label'])
@@ -197,11 +228,12 @@ training = True
 batch_size = 50
 output_csv = "/home/ubuntu/cmps242_HW5/test_submission.csv"
 
+
 # there is way easier to use a feed_dict for the sess.run section at the bottom but I had this code so I implemented it
 def create_dataset():
     """Create placeholders for data and iterator"""
     # create placeholders for the values we are going to feed into the network
-    place_X = tf.placeholder(tf.float32, shape=[None, input_vector_len], name='Input')
+    place_X = tf.placeholder(tf.float32, shape=[None, None, input_vector_len], name='Input')
     place_Seq = tf.placeholder(tf.int32, shape=[None], name='Sequence_Length')
     place_Y = tf.placeholder(tf.int32, shape=[None, label_vector_len], name='Label')
     # create dataset objects which will allow us to use the Dataset class from tensorflow which deals with
@@ -212,16 +244,16 @@ def create_dataset():
 
     if training:
         dataset = tf.data.Dataset.zip((datasetX, datasetSeq, datasetY))
-        dataset = dataset.batch(batch_size)
+        dataset = dataset.shuffle(buffer_size=1000)
+        dataset = dataset.padded_batch(batch_size, dataset.output_shapes)
         dataset = dataset.repeat(n_epochs)
-        dataset = dataset.shuffle(buffer_size=shuffle_buffer_size)
     else:
         dataset = tf.data.Dataset.zip((datasetX, datasetSeq))
         # maybe we can do this bud idk how it works at end of dataset
-        dataset = dataset.batch(batch_size)
+        dataset = dataset.padded_batch(batch_size, dataset.output_shapes)
 
     # prefetch data to make computation quicker so the graph doesnt have to wait for data to be transferred
-    dataset = dataset.prefetch(buffer_size=prefetch_buffer_size)
+    dataset = dataset.prefetch(buffer_size=5)
 
     # create iterator which will iterate through dataset
     iterator = dataset.make_initializable_iterator()
@@ -242,59 +274,72 @@ else:
         x_test, seq_len_test = iterator_test.get_next()
 
 
-
 def create_graph(x, seq_len):
     """Create graph using outputs from iterators"""
     # reshape for blstm layer
-    input = tf.reshape(x, shape=[-1, input_vector_len, 1])
-    print("input shape", input.get_shape())
-    with tf.variable_scope("BLSTM_layer1"):
-        # Forward direction cell
-        lstm_fw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
-        # Backward direction cell
-        lstm_bw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
+    x_shape = x.get_shape().as_list()
+    print(x_shape)
+    # input = tf.reshape(x, shape=[-1, x_shape, 1])
+    with tf.variable_scope("LSTM_layers"):
+        rnn_layers = [tf.nn.rnn_cell.LSTMCell(size, forget_bias=forget_bias) for size in [128, 256]]
 
-        # returns output nodes and the hidden states
-        outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell,
-                                                     lstm_bw_cell, input,
-                                                     dtype=tf.float32,
-                                                     sequence_length=seq_len)
-        # concat two output layers so we can treat as single output layer
-        output = tf.concat(outputs, 2)
+        # create a RNN cell composed sequentially of a number of RNNCells
+        multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(rnn_layers)
 
-    with tf.variable_scope("BLSTM_layer2"):
-        # Forward direction cell
-        lstm_fw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
-        # Backward direction cell
-        lstm_bw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
-        # returns output nodes and the hidden states
-        outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell, lstm_bw_cell, output,
-                                                     dtype=tf.float32,
-                                                     sequence_length=seq_len)
-        # concat two output layers so we can treat as single output layer
-        output = tf.concat(outputs, 2)
+        # 'outputs' is a tensor of shape [batch_size, max_time, 256]
+        # 'state' is a N-tuple where N is the number of LSTMCells containing a
+        # tf.contrib.rnn.LSTMStateTuple for each cell
+        output, _ = tf.nn.dynamic_rnn(cell=multi_rnn_cell,
+                                      inputs=x,
+                                      dtype=tf.float32,
+                                      time_major=False,
+                                      sequence_length=seq_len)
 
-    print(output.get_shape())
-    output_reshape_2 = tf.reshape(output, [-1, 2 * n_hidden * input_vector_len])
-    print(output_reshape_2.get_shape())
+    # with tf.variable_scope("BLSTM_layer1"):
+    #     # Forward direction cell
+    #     lstm_fw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
+    #     # Backward direction cell
+    #     lstm_bw_cell = rnn.LSTMCell(n_hidden, forget_bias=forget_bias, state_is_tuple=True)
+    #
+    #     # returns output nodes and the hidden states
+    #     outputs, _ = tf.nn.bidirectional_dynamic_rnn(lstm_fw_cell,
+    #                                                  lstm_bw_cell, input,
+    #                                                  dtype=tf.float32,
+    #                                                  sequence_length=seq_len)
+    #     # concat two output layers so we can treat as single output layer
+    #     output = tf.concat(outputs, 2)
 
+    def last_relevant(output, length):
+        """Collect last relevant output from a batch of samples
+        https://danijar.com/variable-sequence-lengths-in-tensorflow/
+        """
+        batch_size = tf.shape(output)[0]
+        max_length = tf.shape(output)[1]
+        out_size = int(output.get_shape()[2])
+        index = tf.range(0, batch_size) * max_length + (length - 1)
+        flat = tf.reshape(output, [-1, out_size])
+        relevant = tf.gather(flat, index)
+        return relevant
+
+    last_outputs = last_relevant(output, seq_len)
     # create fully connected input layer
     with tf.variable_scope("Full_conn_layer1"):
-        input_dim = int(output_reshape_2.get_shape()[1])
+        input_dim = int(last_outputs.get_shape()[1])
         weights = tf.get_variable(name="weights", shape=[input_dim, label_vector_len],
-                                  initializer=tf.random_normal_initializer(stddev=np.sqrt(2.0 / (2 * label_vector_len))))
+                                  initializer=tf.random_normal_initializer(
+                                      stddev=np.sqrt(2.0 / (2 * label_vector_len))))
         bias = tf.get_variable(name="bias", shape=[label_vector_len],
                                initializer=tf.zeros_initializer)
 
         # could put activation function here but the loss function completes this for us
-        final_output = tf.nn.bias_add(tf.matmul(output_reshape_2, weights), bias)
+        final_output = tf.nn.bias_add(tf.matmul(last_outputs, weights), bias)
     return final_output
 
 
 # initializing a step variable
 global_step = tf.Variable(0, name='global_step', trainable=False)
 # if computer has nvidia-smi gpu
-GPU = True
+GPU = False
 
 if training:
     # variable scope is to allow reuse of weights betwen validation graph and training grapb
@@ -405,11 +450,11 @@ with tf.Session(config=config) as sess:
                 # get training accuracy stats
                 if step % 10 == 0:
                     summary_v, val_acc, val_cost1 = sess.run([val_summary,
-                                                             val_accuracy,
-                                                             val_cost])
+                                                              val_accuracy,
+                                                              val_cost])
                     summary_t, global_step1, train_acc, train_cost1 = sess.run([train_summary, global_step,
-                                                                                 train_accuracy,
-                                                                                 train_cost])
+                                                                                train_accuracy,
+                                                                                train_cost])
 
                     # add summary statistics
                     writer.add_summary(summary_t, global_step1)
@@ -447,10 +492,7 @@ with tf.Session(config=config) as sess:
         with open(output_csv, 'w+') as csv_file:
             spamwriter = csv.writer(csv_file, delimiter=',')  # ,quotechar='|', quoting=csv.QUOTE_MINIMAL)
             spamwriter.writerow(["id", "realDonaldTrump", "HillaryClinton"])
-            spamwriter.writerows([[i, x[0], 1-x[0]] for i, x in enumerate(all_data_list)])
+            spamwriter.writerows([[i, x[0], 1 - x[0]] for i, x in enumerate(all_data_list)])
 # close session and writer
 sess.close()
 writer.close()
-
-
-
