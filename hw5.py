@@ -17,6 +17,7 @@
 from __future__ import print_function
 import sys
 import os
+import re
 import numpy as np
 import math
 import random
@@ -26,6 +27,8 @@ import csv
 from collections import defaultdict
 
 from nltk.corpus import stopwords
+# nltk.download('punkt')
+from nltk.tokenize.casual import TweetTokenizer
 
 from sklearn.feature_extraction.text import CountVectorizer
 from sklearn.feature_extraction.text import TfidfVectorizer
@@ -37,7 +40,54 @@ from tensorflow.contrib import rnn
 ##########
 # Functions and Classes
 ##########
+############################
+# https://gist.github.com/tokestermw/cb87a97113da12acb388
+FLAGS = re.MULTILINE | re.DOTALL
 
+def hashtag(text):
+    text = text.group()
+    hashtag_body = text[1:]
+    if hashtag_body.isupper():
+        result = "<hashtag> {} <allcaps>".format(hashtag_body)
+    else:
+        result = " ".join(["<hashtag>"] + re.split(r"(?=[A-Z])", hashtag_body, flags=FLAGS))
+    return result
+
+
+def allcaps(text):
+    text = text.group()
+    return text.lower() + " <allcaps>"
+
+
+def tokenize(text):
+    # Different regex parts for smiley faces
+    eyes = r"[8:=;]"
+    nose = r"['`\-]?"
+
+    # function so code less repetitive
+    def re_sub(pattern, repl):
+        return re.sub(pattern, repl, text, flags=FLAGS)
+
+    text = re_sub(r"https?:\/\/\S+\b|www\.(\w+\.)+\S*", "<url>")
+    text = re_sub(r"/"," / ")
+    text = re_sub(r"@\w+", "<user>")
+    text = re_sub(r"{}{}[)dD]+|[)dD]+{}{}".format(eyes, nose, nose, eyes), "<smile>")
+    text = re_sub(r"{}{}p+".format(eyes, nose), "<lolface>")
+    text = re_sub(r"{}{}\(+|\)+{}{}".format(eyes, nose, nose, eyes), "<sadface>")
+    text = re_sub(r"{}{}[\/|l*]".format(eyes, nose), "<neutralface>")
+    text = re_sub(r"<3","<heart>")
+    text = re_sub(r"[-+]?[.\d]*[\d]+[:,.\d]*", "<number>")
+    text = re_sub(r"#\S+", hashtag)
+    text = re_sub(r"([!?.]){2,}", r"\1 <repeat>")
+    text = re_sub(r"\b(\S*?)(.)\2{2,}\b", r"\1\2 <elong>")
+
+    ## -- I just don't understand why the Ruby script adds <allcaps> to everything so I limited the selection.
+    # text = re_sub(r"([^a-z0-9()<>'`\-]){2,}", allcaps)
+    text = re_sub(r"([A-Z]){2,}", allcaps)
+
+    return text.lower()
+
+############################
 
 def readTweetData(filename):
     """
@@ -107,17 +157,33 @@ def create_glove_dict(glove_path):
         for line in glove_f:
             line = line.split()
             glove[line[0]] = [float(x) for x in line[1:]]
-    return glove
+    return dict(glove)
 
 
-def word_2_vec(sentences, glove):
+def word_2_vec(sentences, glove, len_glove=50):
     """Covert words to vectors from twitter glove (Global Vectors for Word Representation) data"""
     out_data = []
+    sequence_length = []
     for sentence in sentences:
-        words = sentence.split()
-        data = np.asarray([glove[word] for word in words])
-        out_data.append(data)
-    return np.asarray(out_data)
+        # words = TweetTokenizer().tokenize(sentence)
+        words = tokenize(sentence)
+        # l_words = [word.lower() for word in words]
+        # words = nltk.word_tokenize(sentence)
+        data = []
+        for word in words:
+            try:
+                data.append(glove[word])
+            except KeyError as e:
+                pass
+        out_data.append(np.asarray(data))
+        sequence_length.append(len(data))
+    max_len_tweet = max([len(tweet) for tweet in out_data])
+    padded_output = []
+    for data in out_data:
+        pad = max_len_tweet - len(data)
+        padded = np.concatenate((data, np.zeros([pad, len_glove])))
+        padded_output.append(padded)
+    return np.asarray(padded_output), np.asarray(sequence_length)
 
 
 ##########
@@ -135,21 +201,27 @@ trump_index = 1
 handles, tweets = readTweetData("./train.csv")
 handles_test, tweets_test = readTweetData("./test.csv")
 
+# with open("/Users/andrewbailey/git/cmps242_HW5/train_tweets", 'w+') as t_f:
+#     for sentence in tweets:
+#         t_f.write(sentence+'\n')
 # Tokenize training and test data
 # X, train_vectorizer = tokenizeTrainAndTest(tweets, local_path_to_nltk_stopwords)
 # X_test = train_vectorizer.transform(tweets_test).toarray()
 
 # (Global Vectors for Word Representation)
 # place to get glove data https://nlp.stanford.edu/projects/glove/
-path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/test.twitter.10.50d.txt"
+path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/glove.twitter.27b.25d.txt"
 glove = create_glove_dict(path_to_glove_twitter)
+input_vector_len = 25  # depends on glove dataset
 
-X = word_2_vec(tweets, glove)
-X_test = word_2_vec(tweets_test, glove)
+X, X_seq_len = word_2_vec(tweets, glove, len_glove=25)
+X_test, test_seq_length = word_2_vec(tweets_test, glove, len_glove=25)
 
 # Encode tweet handles in two binary attributes
 Y = encodeLabels(handles)
 print("Y.shape", Y.shape)
+
+label_vector_len = Y.shape[1]  # 2
 
 # create validation dataset we should randomize this but it works for now
 len_val_set = 1000
@@ -159,13 +231,10 @@ Y_train = Y[len_val_set:]
 Y_val = Y[:len_val_set]
 
 print("X.shape", X_train.shape)
-label_vector_len = Y.shape[1]  # 2
-input_vector_len = 50  # 2
 
-train_seq_length = [len(x) for x in X_train]
-val_seq_length = [len(x) for x in X_val]
+train_seq_length = X_seq_len[len_val_set:]
+val_seq_length = X_seq_len[:len_val_set]
 
-test_seq_length = [len(x) for x in X_test]
 
 # expected data input format
 training_labels = collections.namedtuple('training_data', ['input', 'seq_len', 'label'])
@@ -214,19 +283,19 @@ forget_bias = 5
 learning_rate = 0.001
 #######################
 # set output dir for saving model
-output_dir = "/home/ubuntu/cmps242_HW5/logs"
+output_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
 model_name = "2blstm_fnn"
 # path to trained model and model dir
-trained_model = tf.train.latest_checkpoint("/home/ubuntu/cmps242_HW5/logs")
-print("trained model path", trained_model)
+# trained_model = tf.train.latest_checkpoint("/home/ubuntu/cmps242_HW5/logs")
+# print("trained model path", trained_model)
 # trained_model = "/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
-trained_model_dir = "/home/ubuntu/cmps242_HW5/logs"
+trained_model_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
 training_iters = 1000
 ########
 training = True
 # goes really fast when batch size is high
 batch_size = 50
-output_csv = "/home/ubuntu/cmps242_HW5/test_submission.csv"
+output_csv = "/Users/andrewbailey/git/cmps242_HW5/test_submission.csv"
 
 
 # there is way easier to use a feed_dict for the sess.run section at the bottom but I had this code so I implemented it
@@ -245,12 +314,13 @@ def create_dataset():
     if training:
         dataset = tf.data.Dataset.zip((datasetX, datasetSeq, datasetY))
         dataset = dataset.shuffle(buffer_size=1000)
-        dataset = dataset.padded_batch(batch_size, dataset.output_shapes)
+        # dataset = dataset.padded_batch(batch_size, dataset.output_shapes)
+        dataset = dataset.batch(batch_size)
         dataset = dataset.repeat(n_epochs)
     else:
         dataset = tf.data.Dataset.zip((datasetX, datasetSeq))
-        # maybe we can do this bud idk how it works at end of dataset
-        dataset = dataset.padded_batch(batch_size, dataset.output_shapes)
+        dataset = dataset.batch(batch_size)
+        # dataset = dataset.padded_batch(batch_size, dataset.output_shapes)
 
     # prefetch data to make computation quicker so the graph doesnt have to wait for data to be transferred
     dataset = dataset.prefetch(buffer_size=5)
@@ -352,12 +422,12 @@ if training:
         train_output = create_graph(x_train, seq_len_train)
         print(train_output.get_shape())
         # create get index of each argument
-        y_label_indices = tf.argmax(y_train, 1, name="y_label_indices")
+        y_label_indices = tf.argmax(y_train, 1, name="train_label_indices")
         # loss function
-        loss1 = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=train_output,
-                                                               labels=y_label_indices)
+        train_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=train_output,
+                                                                    labels=y_label_indices)
         # minimize average loss over entire batch
-        train_cost = tf.reduce_mean(loss1)
+        train_cost = tf.reduce_mean(train_loss)
         # add cost to variable summary so we can track using tensorboard
         train_variable_summaries(train_cost)
         # create optimizer
@@ -372,11 +442,11 @@ if training:
         # create graph and
         val_output = create_graph(x_val, seq_len_val)
         # loss function
-        y_label_indices_val = tf.argmax(y_val, 1, name="y_label_indices")
-        val_loss1 = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=val_output,
-                                                                   labels=y_label_indices_val)
+        y_label_indices_val = tf.argmax(y_val, 1, name="val_label_indices")
+        val_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=val_output,
+                                                                  labels=y_label_indices_val)
         # minimize average loss over entire batch
-        val_cost = tf.reduce_mean(val_loss1)
+        val_cost = tf.reduce_mean(val_loss)
         train_variable_summaries(val_cost)
         # create prediction by comparing index from output and label then getting the mean
         val_predict = tf.equal(tf.argmax(val_output, 1), tf.argmax(y_val, 1))
@@ -423,6 +493,13 @@ with tf.Session(config=config) as sess:
 
     # load data into placeholders
     if training:
+        print(type(train_data.input))
+        print(type(train_data.label))
+        print(type(train_data.seq_len))
+        print(type(place_X_train))
+        print(type(place_Y_train))
+        print(type(place_Seq_train))
+
         sess.run(iterator_train.initializer,
                  feed_dict={place_X_train: train_data.input,
                             place_Y_train: train_data.label,
