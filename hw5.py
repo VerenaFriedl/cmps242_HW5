@@ -210,12 +210,12 @@ handles_test, tweets_test = readTweetData("./test.csv")
 
 # (Global Vectors for Word Representation)
 # place to get glove data https://nlp.stanford.edu/projects/glove/
-path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/glove.twitter.27b.25d.txt"
+path_to_glove_twitter = "/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
 glove = create_glove_dict(path_to_glove_twitter)
-input_vector_len = 25  # depends on glove dataset
+input_vector_len = 50  # depends on glove dataset
 
-X, X_seq_len = word_2_vec(tweets, glove, len_glove=25)
-X_test, test_seq_length = word_2_vec(tweets_test, glove, len_glove=25)
+X, X_seq_len = word_2_vec(tweets, glove, len_glove=50)
+X_test, test_seq_length = word_2_vec(tweets_test, glove, len_glove=50)
 
 # Encode tweet handles in two binary attributes
 Y = encodeLabels(handles)
@@ -276,26 +276,26 @@ def train_variable_summaries(var):
 shuffle_buffer_size = 50
 prefetch_buffer_size = 50
 # number of iterations through all training data
-n_epochs = 10
+n_epochs = 10000
 # number of hidden nodes in blstm
-n_hidden = 10
+n_hidden = [200, 200, 200]
 forget_bias = 5
 learning_rate = 0.001
 #######################
 # set output dir for saving model
-output_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
-model_name = "2blstm_fnn"
+output_dir = "/home/ubuntu/cmps242_HW5/logs/3lstm"
+model_name = "3lstm_fnn"
 # path to trained model and model dir
 # trained_model = tf.train.latest_checkpoint("/home/ubuntu/cmps242_HW5/logs")
 # print("trained model path", trained_model)
 # trained_model = "/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
-trained_model_dir = "/Users/andrewbailey/git/cmps242_HW5/logs"
-training_iters = 1000
+trained_model_dir = "/home/ubuntu/cmps242_HW5/logs"
+training_iters = 10000
 ########
 training = True
 # goes really fast when batch size is high
-batch_size = 50
-output_csv = "/Users/andrewbailey/git/cmps242_HW5/test_submission.csv"
+batch_size = 250
+output_csv = "/home/ubuntu/cmps242_HW5/test_submission.csv"
 
 
 # there is way easier to use a feed_dict for the sess.run section at the bottom but I had this code so I implemented it
@@ -351,7 +351,7 @@ def create_graph(x, seq_len):
     print(x_shape)
     # input = tf.reshape(x, shape=[-1, x_shape, 1])
     with tf.variable_scope("LSTM_layers"):
-        rnn_layers = [tf.nn.rnn_cell.LSTMCell(size, forget_bias=forget_bias) for size in [128, 256]]
+        rnn_layers = [tf.nn.rnn_cell.LSTMCell(size, forget_bias=forget_bias) for size in n_hidden]
 
         # create a RNN cell composed sequentially of a number of RNNCells
         multi_rnn_cell = tf.nn.rnn_cell.MultiRNNCell(rnn_layers)
@@ -409,7 +409,7 @@ def create_graph(x, seq_len):
 # initializing a step variable
 global_step = tf.Variable(0, name='global_step', trainable=False)
 # if computer has nvidia-smi gpu
-GPU = False
+GPU = True
 
 if training:
     # variable scope is to allow reuse of weights betwen validation graph and training grapb
@@ -447,7 +447,7 @@ if training:
                                                                   labels=y_label_indices_val)
         # minimize average loss over entire batch
         val_cost = tf.reduce_mean(val_loss)
-        train_variable_summaries(val_cost)
+        val_variable_summaries(val_cost)
         # create prediction by comparing index from output and label then getting the mean
         val_predict = tf.equal(tf.argmax(val_output, 1), tf.argmax(y_val, 1))
         val_accuracy = tf.reduce_mean(tf.cast(val_predict, tf.float32))
@@ -493,12 +493,12 @@ with tf.Session(config=config) as sess:
 
     # load data into placeholders
     if training:
-        print(type(train_data.input))
-        print(type(train_data.label))
-        print(type(train_data.seq_len))
-        print(type(place_X_train))
-        print(type(place_Y_train))
-        print(type(place_Seq_train))
+        # print(type(train_data.input))
+        #print(type(train_data.label))
+        #print(type(train_data.seq_len))
+        #print(type(place_X_train))
+        #print(type(place_Y_train))
+        #print(type(place_Seq_train))
 
         sess.run(iterator_train.initializer,
                  feed_dict={place_X_train: train_data.input,
