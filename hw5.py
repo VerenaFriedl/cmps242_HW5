@@ -4,7 +4,7 @@
 # File: hw5.py
 # Authors: Verena Friedl, Jon Akutagawa, Andrew Bailey
 # History: created       Nov 9, 2017
-#          last changed  Nov 9, 2017
+#          last changed  Nov 13, 2017
 ##########
 
 """
@@ -173,6 +173,7 @@ def word_2_vec(sentences, glove, len_glove=50):
         for word in words:
             try:
                 data.append(glove[word])
+            # ToDo maybe look into this again and check what errors
             except KeyError as e:
                 pass
         out_data.append(np.asarray(data))
@@ -191,7 +192,7 @@ def word_2_vec(sentences, glove, len_glove=50):
 ##########
 
 # Set this to your local path.
-local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
+#local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
 # Global index for clinton and trump
 clinton_index = 0
@@ -223,7 +224,8 @@ print("Y.shape", Y.shape)
 
 label_vector_len = Y.shape[1]  # 2
 
-# create validation dataset we should randomize this but it works for now
+# create validation dataset
+# ToDo we should randomize this but it works for now
 len_val_set = 1000
 X_train = X[len_val_set:]
 X_val = X[:len_val_set]
@@ -379,6 +381,7 @@ def create_graph(x, seq_len):
     #     # concat two output layers so we can treat as single output layer
     #     output = tf.concat(outputs, 2)
 
+# ToDo make sure this function works properly - indexing right?
     def last_relevant(output, length):
         """Collect last relevant output from a batch of samples
         https://danijar.com/variable-sequence-lengths-in-tensorflow/
@@ -479,10 +482,10 @@ with tf.Session(config=config) as sess:
         writer = tf.summary.FileWriter(output_dir, sess.graph)
         sess.run(tf.global_variables_initializer())
         save_model_path = os.path.join(output_dir, model_name)
-        saver = tf.train.Saver()
+        saver = tf.train.Saver(max_to_keep=4, keep_checkpoint_every_n_hours=1)
         saver.save(sess, save_model_path,
                    global_step=global_step)
-        saver = tf.train.Saver(max_to_keep=4, keep_checkpoint_every_n_hours=1)
+
     else:
         # if we want to load the model
         writer = tf.summary.FileWriter(trained_model_dir, sess.graph)
@@ -569,7 +572,7 @@ with tf.Session(config=config) as sess:
         with open(output_csv, 'w+') as csv_file:
             spamwriter = csv.writer(csv_file, delimiter=',')  # ,quotechar='|', quoting=csv.QUOTE_MINIMAL)
             spamwriter.writerow(["id", "realDonaldTrump", "HillaryClinton"])
-            spamwriter.writerows([[i, x[0], 1 - x[0]] for i, x in enumerate(all_data_list)])
+            spamwriter.writerows([[i, x[trump_index], x[clinton_index]] for i, x in enumerate(all_data_list)])
 # close session and writer
 sess.close()
 writer.close()
