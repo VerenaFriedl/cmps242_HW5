@@ -1,10 +1,10 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python2.7
 
 ##########
 # File: hw5.py
 # Authors: Verena Friedl, Jon Akutagawa, Andrew Bailey
 # History: created       Nov 9, 2017
-#          last changed  Nov 13, 2017
+#          last changed  Nov 14, 2017
 ##########
 
 """
@@ -27,11 +27,11 @@ import csv
 from collections import defaultdict
 
 from nltk.corpus import stopwords
-# nltk.download('punkt')
+#nltk.download('punkt')
 from nltk.tokenize.casual import TweetTokenizer
 
-from sklearn.feature_extraction.text import CountVectorizer
-from sklearn.feature_extraction.text import TfidfVectorizer
+#from sklearn.feature_extraction.text import CountVectorizer
+#from sklearn.feature_extraction.text import TfidfVectorizer
 
 import tensorflow as tf
 from tensorflow.contrib import rnn
@@ -194,6 +194,9 @@ def word_2_vec(sentences, glove, len_glove=50):
 # Set this to your local path.
 #local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
+# Working directory
+work_dir = "/Users/vfriedl/Google Drive/classes/cmps242/cmps242_HW5/"
+
 # Global index for clinton and trump
 clinton_index = 0
 trump_index = 1
@@ -210,17 +213,25 @@ handles_test, tweets_test = readTweetData("./test.csv")
 # X_test = train_vectorizer.transform(tweets_test).toarray()
 
 # (Global Vectors for Word Representation)
+input_vector_len = 25  # depends on glove dataset
 # place to get glove data https://nlp.stanford.edu/projects/glove/
-path_to_glove_twitter = "/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
+path_to_glove_twitter = "/Users/vfriedl/DATA/glove.twitter.27B/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
 glove = create_glove_dict(path_to_glove_twitter)
-input_vector_len = 50  # depends on glove dataset
+print("Glove dict length: "+str(len(glove)))
 
-X, X_seq_len = word_2_vec(tweets, glove, len_glove=50)
-X_test, test_seq_length = word_2_vec(tweets_test, glove, len_glove=50)
+X, X_seq_len = word_2_vec(tweets, glove, len_glove=input_vector_len)
+print("X shape "+str(X.shape))
+#print(X[0][0])
+#print(X[0][310])
+print("X_seq_len shape "+str(X_seq_len.shape))
+print("max(X_seq_len) "+str(max(X_seq_len)))
+print(X_seq_len)
+X_test, test_seq_length = word_2_vec(tweets_test, glove, len_glove=input_vector_len)
 
 # Encode tweet handles in two binary attributes
 Y = encodeLabels(handles)
 print("Y.shape", Y.shape)
+print(Y)
 
 label_vector_len = Y.shape[1]  # 2
 
@@ -232,10 +243,16 @@ X_val = X[:len_val_set]
 Y_train = Y[len_val_set:]
 Y_val = Y[:len_val_set]
 
-print("X.shape", X_train.shape)
+print("X_train.shape ", X_train.shape)
+print("X_val.shape ", X_val.shape)
+print("Y_train.shape ", Y_train.shape)
+print("Y_val.shape ", Y_val.shape)
 
 train_seq_length = X_seq_len[len_val_set:]
 val_seq_length = X_seq_len[:len_val_set]
+
+print("train_seq_length ", train_seq_length.shape)
+print("val_seq_length ", val_seq_length.shape)
 
 
 # expected data input format
@@ -243,6 +260,7 @@ training_labels = collections.namedtuple('training_data', ['input', 'seq_len', '
 inference_labels = collections.namedtuple('inference_data', ['input', 'seq_len'])
 
 train_data = training_labels(input=X_train, seq_len=train_seq_length, label=Y_train)
+#print("train_data "+str(train_data))
 val_data = training_labels(input=X_val, seq_len=val_seq_length, label=Y_val)
 test_data = inference_labels(input=X_test, seq_len=test_seq_length)
 
@@ -285,19 +303,21 @@ forget_bias = 5
 learning_rate = 0.001
 #######################
 # set output dir for saving model
-output_dir = "/home/ubuntu/cmps242_HW5/logs/3lstm"
 model_name = "3lstm_fnn"
+output_dir = work_dir+"logs/"+model_name #"/home/ubuntu/cmps242_HW5/logs/3lstm"
+
 # path to trained model and model dir
 # trained_model = tf.train.latest_checkpoint("/home/ubuntu/cmps242_HW5/logs")
 # print("trained model path", trained_model)
-# trained_model = "/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
-trained_model_dir = "/home/ubuntu/cmps242_HW5/logs"
-training_iters = 10000
+trained_model_dir = work_dir+"logs" #"/home/ubuntu/cmps242_HW5/logs"
+training_iters = 5 #10000
+trained_model = output_dir+"/"+model_name+"-"+str(training_iters) #"/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
+
 ########
-training = True
+training = False
 # goes really fast when batch size is high
 batch_size = 250
-output_csv = "/home/ubuntu/cmps242_HW5/test_submission.csv"
+output_csv = work_dir+"test_submission.csv" #"/home/ubuntu/cmps242_HW5/test_submission.csv"
 
 
 # there is way easier to use a feed_dict for the sess.run section at the bottom but I had this code so I implemented it
@@ -350,7 +370,7 @@ def create_graph(x, seq_len):
     """Create graph using outputs from iterators"""
     # reshape for blstm layer
     x_shape = x.get_shape().as_list()
-    print(x_shape)
+    print("x_shape in create_graph "+str(x_shape))
     # input = tf.reshape(x, shape=[-1, x_shape, 1])
     with tf.variable_scope("LSTM_layers"):
         rnn_layers = [tf.nn.rnn_cell.LSTMCell(size, forget_bias=forget_bias) for size in n_hidden]
@@ -381,20 +401,35 @@ def create_graph(x, seq_len):
     #     # concat two output layers so we can treat as single output layer
     #     output = tf.concat(outputs, 2)
 
-# ToDo make sure this function works properly - indexing right?
+
+    # Not sure if this function works properly. Found other code from the tutorial in the lecture to replace it
+    # Would not use this anymore
     def last_relevant(output, length):
         """Collect last relevant output from a batch of samples
         https://danijar.com/variable-sequence-lengths-in-tensorflow/
         """
         batch_size = tf.shape(output)[0]
+        print("batch_size "+str(batch_size))
         max_length = tf.shape(output)[1]
+        print("max_length " + str(max_length))
         out_size = int(output.get_shape()[2])
+        print("out_size " + str(out_size))
         index = tf.range(0, batch_size) * max_length + (length - 1)
         flat = tf.reshape(output, [-1, out_size])
+        print("flat:"+str(flat)+" index:"+str(index))
         relevant = tf.gather(flat, index)
+        #print("relevant: "+str(relevant))
         return relevant
 
-    last_outputs = last_relevant(output, seq_len)
+    # Using the last_relevant function, that might have a bug. Replaced by code below.
+    #last_outputs = last_relevant(output, seq_len)
+
+    # Replacing the function last_relevant
+    # found in the tutorial presented in the lecture.
+    batch_size = tf.shape(output)[0]
+    last_outputs = tf.gather_nd(output, tf.stack([tf.range(batch_size), seq_len - 1], axis=1))
+
+
     # create fully connected input layer
     with tf.variable_scope("Full_conn_layer1"):
         input_dim = int(last_outputs.get_shape()[1])
@@ -412,10 +447,10 @@ def create_graph(x, seq_len):
 # initializing a step variable
 global_step = tf.Variable(0, name='global_step', trainable=False)
 # if computer has nvidia-smi gpu
-GPU = True
+GPU = False
 
 if training:
-    # variable scope is to allow reuse of weights betwen validation graph and training grapb
+    # variable scope is to allow reuse of weights between validation graph and training graph
     if GPU:
         device = '/gpu:0'
     else:
@@ -423,7 +458,7 @@ if training:
 
     with tf.variable_scope("graph", reuse=tf.AUTO_REUSE) and tf.device(device):
         train_output = create_graph(x_train, seq_len_train)
-        print(train_output.get_shape())
+        print("train_output.get_shape() "+str(train_output.get_shape()))
         # create get index of each argument
         y_label_indices = tf.argmax(y_train, 1, name="train_label_indices")
         # loss function
@@ -444,6 +479,7 @@ if training:
     with tf.variable_scope("graph", reuse=tf.AUTO_REUSE):
         # create graph and
         val_output = create_graph(x_val, seq_len_val)
+        print("val_output.get_shape() " + str(val_output.get_shape()))
         # loss function
         y_label_indices_val = tf.argmax(y_val, 1, name="val_label_indices")
         val_loss = tf.nn.sparse_softmax_cross_entropy_with_logits(logits=val_output,
@@ -461,7 +497,7 @@ if training:
     train_summary = tf.summary.merge(training_summaries)
 else:
     test_output = create_graph(x_test, seq_len_test)
-    print(test_output.get_shape())
+    print("test_output.get_shape()"+str(test_output.get_shape()))
     # create get index of each argument
     test_probs = tf.nn.softmax(test_output)
 
@@ -528,7 +564,8 @@ with tf.Session(config=config) as sess:
                 _ = sess.run([train_op])
                 step += 1
                 # get training accuracy stats
-                if step % 10 == 0:
+                #if step % 10 == 0:
+                if step % 1 == 0:
                     summary_v, val_acc, val_cost1 = sess.run([val_summary,
                                                               val_accuracy,
                                                               val_cost])
