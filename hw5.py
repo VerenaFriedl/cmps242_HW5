@@ -60,6 +60,7 @@ def allcaps(text):
 
 
 def tokenize(text):
+
     # Different regex parts for smiley faces
     eyes = r"[8:=;]"
     nose = r"['`\-]?"
@@ -68,26 +69,71 @@ def tokenize(text):
     def re_sub(pattern, repl):
         return re.sub(pattern, repl, text, flags=FLAGS)
 
-    text = re_sub(r"https?:\/\/\S+\b|www\.(\w+\.)+\S*", "<url>")
+    text = re_sub(r"https?:\/\/\S+\b|www\.(\w+\.)+\S*", " <url> ")
     text = re_sub(r"/"," / ")
     text = re_sub(r"@\w+", "<user>")
-    text = re_sub(r"{}{}[)dD]+|[)dD]+{}{}".format(eyes, nose, nose, eyes), "<smile>")
-    text = re_sub(r"{}{}p+".format(eyes, nose), "<lolface>")
-    text = re_sub(r"{}{}\(+|\)+{}{}".format(eyes, nose, nose, eyes), "<sadface>")
-    text = re_sub(r"{}{}[\/|l*]".format(eyes, nose), "<neutralface>")
-    text = re_sub(r"<3","<heart>")
-    text = re_sub(r"[-+]?[.\d]*[\d]+[:,.\d]*", "<number>")
-    text = re_sub(r"#\S+", hashtag)
-    text = re_sub(r"([!?.]){2,}", r"\1 <repeat>")
-    text = re_sub(r"\b(\S*?)(.)\2{2,}\b", r"\1\2 <elong>")
+    text = re_sub(r"{}{}[)dD]+|[)dD]+{}{}".format(eyes, nose, nose, eyes), " <smile> ")
+    text = re_sub(r"{}{}p+".format(eyes, nose), " <lolface> ")
+    text = re_sub(r"{}{}\(+|\)+{}{}".format(eyes, nose, nose, eyes), " <sadface> ")
+    text = re_sub(r"{}{}[\/|l*]".format(eyes, nose), " <neutralface> ")
+    text = re_sub(r"<3"," <heart> ")
+    text = re_sub(r"[-+]?[.\d]*[\d]+[:,.\d]*", " <number> ")
+    text = re_sub(r"#\S+", " <hashtag> ")
+    text = re_sub(r"([!?.]){2,}", r"\1 <repeat> ")
+    text = re_sub(r"\b(\S*?)(.)\2{2,}\b", r"\1\2 <elong> ")
+
 
     ## -- I just don't understand why the Ruby script adds <allcaps> to everything so I limited the selection.
     # text = re_sub(r"([^a-z0-9()<>'`\-]){2,}", allcaps)
-    text = re_sub(r"([A-Z]){2,}", allcaps)
+    text = re_sub(r"([A-Z]){2,}", " <allcaps> ")
 
-    return text.lower()
+    text = text.lower()
+    # Take care of contractions like don't, can't, it's, ...
+    # Glove word model seems to have them as dont, cant, its, ... so just delete the '
+    text = re_sub("\'s", "")
+    text = re_sub("\'", "")
+    text = re_sub("\xe2\x80\x99", "")
+    text = re_sub("\xe2\x80\x98", "")
+
+    # special cases
+    text = re_sub("shewon", "she won")
+    text = re_sub("trumpwon", "trump won")
+    text = re_sub("americafirst", "america first")
+    text = re_sub("debatenight", "debate night")
+    text = re_sub("imwithher", "i am with her")
+    text = re_sub("lovetrumpshate", "love trumps hate")
+    text = re_sub("trumptrain", "trump train")
+    text = re_sub("makeamericagreatagain", "make america great again")
+    text = re_sub("americafirst", "america first")
+    text = re_sub("thedonald", "the donald")
+    text = re_sub("imwithyou", "i am with you")
+    text = re_sub("hillarys", "hillary")
+    text = re_sub("<user>s", "<user>")
+    text = re_sub("\xe2\x80\x94", " - ")
+    text = re_sub("\xe2\x80\xa6", "...")
+    text = re_sub("\xe2\x80\x9c", " \" ")
+    text = re_sub("&amp", " & ")
+    text = re_sub("\xe2\x80\x9d", " \" ")
+    text = re_sub("&gt", ">")
+    text = re_sub("hillaryclinton", "hillary clinton")
+    text = re_sub("\xe2\x80\x93", " - ")
+    text = re_sub("\xe2\x9c\x93", "")
+    text = re_sub("johnkasich", "john kasich")
+    text = re_sub("\xe2\x9c\x85", " ")
+    text = re_sub("\xc2\xa1", " ")
+    text = re_sub("\xe2\x9c\x94\xef\xb8\x8f", " ")
+    text = re_sub("realdonaldtrump", "real donald trump")
+    # surround special characters with whitespace so they won't be connected to a word
+    text = re_sub(r'([\"\,\#\!\:\.\-\?\(\)\;\*\[\]\=\$])', r" \1 ")
+
+    # split text at white spaces
+    text = text.split()
+    #text = [w for w in text if w.strip()]  # gets rid of strings that are only whitespace(s)
+    # -> don't need it if splitting at white space
+    return text
 
 ############################
+
 
 def readTweetData(filename):
     """
@@ -167,7 +213,6 @@ def word_2_vec(sentences, glove, len_glove=50):
     for sentence in sentences:
         # words = TweetTokenizer().tokenize(sentence)
         words = tokenize(sentence)
-        # l_words = [word.lower() for word in words]
         # words = nltk.word_tokenize(sentence)
         data = []
         for word in words:
@@ -175,6 +220,9 @@ def word_2_vec(sentences, glove, len_glove=50):
                 data.append(glove[word])
             # ToDo maybe look into this again and check what errors
             except KeyError as e:
+                # Errors for words that are not contained in the word model. Print and take a look at them:
+                #print(word)
+                #print(e)
                 pass
         out_data.append(np.asarray(data))
         sequence_length.append(len(data))
@@ -314,7 +362,7 @@ training_iters = 5 #10000
 trained_model = output_dir+"/"+model_name+"-"+str(training_iters) #"/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
 
 ########
-training = False
+training = True
 # goes really fast when batch size is high
 batch_size = 250
 output_csv = work_dir+"test_submission.csv" #"/home/ubuntu/cmps242_HW5/test_submission.csv"
