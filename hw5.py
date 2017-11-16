@@ -25,6 +25,8 @@ import collections
 import nltk
 import csv
 from collections import defaultdict
+import splitter
+import wordninja
 
 from nltk.corpus import stopwords
 #nltk.download('punkt')
@@ -35,6 +37,9 @@ from nltk.tokenize.casual import TweetTokenizer
 
 import tensorflow as tf
 from tensorflow.contrib import rnn
+
+#pip install pyenchant
+#pip install splitter
 
 
 ##########
@@ -71,21 +76,21 @@ def tokenize(text):
 
     text = re_sub(r"https?:\/\/\S+\b|www\.(\w+\.)+\S*", " <url> ")
     text = re_sub(r"/"," / ")
-    text = re_sub(r"@\w+", "<user>")
+    text = re_sub(r"@", "<user> ")
     text = re_sub(r"{}{}[)dD]+|[)dD]+{}{}".format(eyes, nose, nose, eyes), " <smile> ")
     text = re_sub(r"{}{}p+".format(eyes, nose), " <lolface> ")
     text = re_sub(r"{}{}\(+|\)+{}{}".format(eyes, nose, nose, eyes), " <sadface> ")
     text = re_sub(r"{}{}[\/|l*]".format(eyes, nose), " <neutralface> ")
     text = re_sub(r"<3"," <heart> ")
     text = re_sub(r"[-+]?[.\d]*[\d]+[:,.\d]*", " <number> ")
-    text = re_sub(r"#\S+", " <hashtag> ")
+    text = re_sub(r"#", " <hashtag> ")
     text = re_sub(r"([!?.]){2,}", r"\1 <repeat> ")
     text = re_sub(r"\b(\S*?)(.)\2{2,}\b", r"\1\2 <elong> ")
 
 
     ## -- I just don't understand why the Ruby script adds <allcaps> to everything so I limited the selection.
     # text = re_sub(r"([^a-z0-9()<>'`\-]){2,}", allcaps)
-    text = re_sub(r"([A-Z]){2,}", " <allcaps> ")
+    re_sub(r"([A-Z]{2,})", "<allcaps> " + r"\1")
 
     text = text.lower()
     # Take care of contractions like don't, can't, it's, ...
@@ -210,22 +215,40 @@ def word_2_vec(sentences, glove, len_glove=50):
     """Covert words to vectors from twitter glove (Global Vectors for Word Representation) data"""
     out_data = []
     sequence_length = []
+    errors = []
     for sentence in sentences:
+        # sentence = wordninja.split("asd thefactis")
+
         # words = TweetTokenizer().tokenize(sentence)
+
         words = tokenize(sentence)
         # words = nltk.word_tokenize(sentence)
         data = []
+        # print(words)
         for word in words:
             try:
-                data.append(glove[word])
+                data.append(glove[word.lower()])
             # ToDo maybe look into this again and check what errors
             except KeyError as e:
+                # print("ERROR", word.lower())
+                # errors.append(word.lower())
+                # pass
                 # Errors for words that are not contained in the word model. Print and take a look at them:
-                #print(word)
-                #print(e)
-                pass
+                try:
+                    split = tokenize(word)
+                    # print("FIRST ERROR", word, split)
+                    for word in split:
+                        word = splitter.split(word)
+                        for sub_word in word:
+                            data.append(glove[sub_word.lower()])
+                except KeyError as e:
+                    # Errors for words that are not contained in the word model. Print and take a look at them:
+                    print("ERROR", sub_word.lower())
+                    errors.append(sub_word.lower())
+                    pass
         out_data.append(np.asarray(data))
         sequence_length.append(len(data))
+    print(len(errors))
     max_len_tweet = max([len(tweet) for tweet in out_data])
     padded_output = []
     for data in out_data:
@@ -243,7 +266,7 @@ def word_2_vec(sentences, glove, len_glove=50):
 #local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
 # Working directory
-work_dir = "/Users/vfriedl/Google Drive/classes/cmps242/cmps242_HW5/"
+work_dir = "/Users/andrewbailey/git/cmps242_HW5/"
 
 # Global index for clinton and trump
 clinton_index = 0
@@ -263,7 +286,7 @@ handles_test, tweets_test = readTweetData("./test.csv")
 # (Global Vectors for Word Representation)
 input_vector_len = 25  # depends on glove dataset
 # place to get glove data https://nlp.stanford.edu/projects/glove/
-path_to_glove_twitter = "/Users/vfriedl/DATA/glove.twitter.27B/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
+path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
 glove = create_glove_dict(path_to_glove_twitter)
 print("Glove dict length: "+str(len(glove)))
 
@@ -346,7 +369,7 @@ prefetch_buffer_size = 50
 # number of iterations through all training data
 n_epochs = 10000
 # number of hidden nodes in blstm
-n_hidden = [200, 200, 200]
+n_hidden = [200]
 forget_bias = 5
 learning_rate = 0.001
 #######################
@@ -358,7 +381,7 @@ output_dir = work_dir+"logs/"+model_name #"/home/ubuntu/cmps242_HW5/logs/3lstm"
 # trained_model = tf.train.latest_checkpoint("/home/ubuntu/cmps242_HW5/logs")
 # print("trained model path", trained_model)
 trained_model_dir = work_dir+"logs" #"/home/ubuntu/cmps242_HW5/logs"
-training_iters = 5 #10000
+training_iters = 2 #10000
 trained_model = output_dir+"/"+model_name+"-"+str(training_iters) #"/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
 
 ########
