@@ -26,7 +26,6 @@ import nltk
 import csv
 from collections import defaultdict
 import splitter
-import wordninja
 
 from nltk.corpus import stopwords
 #nltk.download('punkt')
