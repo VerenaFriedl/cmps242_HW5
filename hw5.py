@@ -1,4 +1,4 @@
-#!/usr/bin/env python2.7
+#/usr/bin/env python2.7
 
 ##########
 # File: hw5.py
@@ -264,7 +264,7 @@ def word_2_vec(sentences, glove, len_glove=50):
 local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
 # Working directory
-work_dir = "/Users/andrewbailey/git/cmps242_HW5/"
+work_dir = "/home/ubuntu/cmps242_HW5/"
 
 # Global index for clinton and trump
 clinton_index = 0
@@ -274,14 +274,14 @@ trump_index = 1
 handles, tweets = readTweetData("./train.csv")
 handles_test, tweets_test = readTweetData("./test.csv")
 print(len(handles_test), len(tweets_test))
-with open("/Users/andrewbailey/git/cmps242_HW5/train_tweets", 'w+') as t_f:
-    for sentence in tweets:
-        t_f.write(sentence+'\n')
+#with open("/Users/andrewbailey/git/cmps242_HW5/train_tweets", 'w+') as t_f:
+ #   for sentence in tweets:
+  #      t_f.write(sentence+'\n')
 
 
-input_vector_len = 25  # depends on glove dataset
+input_vector_len = 1000  # depends on glove dataset
 
-token = False
+token = True
 if token:
     try:
         X = np.load("token_train_data_"+str(input_vector_len)+".npy")
@@ -301,14 +301,14 @@ if token:
 else:
     try:
         X = np.load("glove_train_data_"+str(input_vector_len)+".npy")
-        X_test = np.load("glove_test_seq_data_"+str(input_vector_len)+".npy")
+        X_test = np.load("glove_test_data_"+str(input_vector_len)+".npy")
         X_seq_len = np.load("glove_train_seq_data_"+str(input_vector_len)+".npy")
         test_seq_length = np.load("glove_test_seq_data_"+str(input_vector_len)+".npy")
 
     except IOError:
         # (Global Vectors for Word Representation)
         # place to get glove data https://nlp.stanford.edu/projects/glove/
-        path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
+        path_to_glove_twitter = "/home/ubuntu/cmps242_HW5/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
         glove = create_glove_dict(path_to_glove_twitter)
         print("Glove dict length: "+str(len(glove)))
 
@@ -316,10 +316,11 @@ else:
         X_test, test_seq_length = word_2_vec(tweets_test, glove, len_glove=input_vector_len)
 
         np.save("glove_train_data_"+str(input_vector_len)+".npy", X)
-        np.save("glove_test_seq_data_"+str(input_vector_len)+".npy", X_test)
+        np.save("glove_test_data_"+str(input_vector_len)+".npy", X_test)
         np.save("glove_train_seq_data_"+str(input_vector_len)+".npy", X_seq_len)
         np.save("glove_test_seq_data_"+str(input_vector_len)+".npy", test_seq_length)
 
+print("X_test shape "+str(X_test.shape))
 print("X shape "+str(X.shape))
 print("X_seq_len shape "+str(X_seq_len.shape))
 print("max(X_seq_len) "+str(max(X_seq_len)))
@@ -398,25 +399,25 @@ prefetch_buffer_size = 50
 # number of iterations through all training data
 n_epochs = 10000
 # number of hidden nodes in blstm
-n_hidden = [1]
+n_hidden = [200, 200]
 forget_bias = 5
-learning_rate = 0.001
+learning_rate = 0.0001
 #######################
 # set output dir for saving model
-model_name = "3lstm_fnn"
+model_name = "token_200_1lstm"
 output_dir = work_dir+"logs/"+model_name #"/home/ubuntu/cmps242_HW5/logs/3lstm"
 
 # path to trained model and model dir
 # trained_model = tf.train.latest_checkpoint("/home/ubuntu/cmps242_HW5/logs")
 # print("trained model path", trained_model)
 trained_model_dir = work_dir+"logs" #"/home/ubuntu/cmps242_HW5/logs"
-training_iters = 2 #10000
+training_iters = 1000 #10000
 trained_model = output_dir+"/"+model_name+"-"+str(training_iters) #"/Users/andrewbailey/git/cmps242_HW5/logs/2blstm_fnn-10"
 
 ########
 training = True
 # goes really fast when batch size is high
-batch_size = 250
+batch_size = 100
 output_csv = work_dir+"test_submission.csv" #"/home/ubuntu/cmps242_HW5/test_submission.csv"
 
 
@@ -472,7 +473,7 @@ else:
         x_test, seq_len_test = iterator_test.get_next()
 
 
-def create_graph(x, seq_len):
+def create_graph(x, seq_len, reuse):
     """Create graph using outputs from iterators"""
     # reshape for blstm layer
     x_shape = x.get_shape().as_list()
@@ -480,7 +481,7 @@ def create_graph(x, seq_len):
     if token:
         x = tf.reshape(x, [-1, input_vector_len, 1])
     # input = tf.reshape(x, shape=[-1, x_shape, 1])
-    with tf.variable_scope("LSTM_layers"):
+    with tf.variable_scope("LSTM_layers", reuse=reuse):
         rnn_layers = [tf.nn.rnn_cell.LSTMCell(size, forget_bias=forget_bias) for size in n_hidden]
 
         # create a RNN cell composed sequentially of a number of RNNCells
@@ -539,7 +540,7 @@ def create_graph(x, seq_len):
 
 
     # create fully connected input layer
-    with tf.variable_scope("Full_conn_layer1"):
+    with tf.variable_scope("Full_conn_layer1", reuse=reuse):
         input_dim = int(last_outputs.get_shape()[1])
         weights = tf.get_variable(name="weights", shape=[input_dim, label_vector_len],
                                   initializer=tf.random_normal_initializer(
@@ -555,7 +556,7 @@ def create_graph(x, seq_len):
 # initializing a step variable
 global_step = tf.Variable(0, name='global_step', trainable=False)
 # if computer has nvidia-smi gpu
-GPU = False
+GPU = True
 
 if training:
     # variable scope is to allow reuse of weights between validation graph and training graph
@@ -564,8 +565,8 @@ if training:
     else:
         device = '/cpu:0'
 
-    with tf.variable_scope("graph", reuse=tf.AUTO_REUSE) and tf.device(device):
-        train_output = create_graph(x_train, seq_len_train)
+    with tf.variable_scope("graph", reuse=False) and tf.device(device):
+        train_output = create_graph(x_train, seq_len_train, reuse=False)
         print("train_output.get_shape() "+str(train_output.get_shape()))
         # create get index of each argument
         y_label_indices = tf.argmax(y_train, 1, name="train_label_indices")
@@ -584,9 +585,9 @@ if training:
         train_accuracy = tf.reduce_mean(tf.cast(train_predict, tf.float32))
         train_variable_summaries(train_accuracy)
 
-    with tf.variable_scope("graph", reuse=tf.AUTO_REUSE):
+    with tf.variable_scope("graph", reuse=True) and tf.device(device):
         # create graph and
-        val_output = create_graph(x_val, seq_len_val)
+        val_output = create_graph(x_val, seq_len_val, reuse=True)
         print("val_output.get_shape() " + str(val_output.get_shape()))
         # loss function
         y_label_indices_val = tf.argmax(y_val, 1, name="val_label_indices")
@@ -604,7 +605,7 @@ if training:
     val_summary = tf.summary.merge(validation_summaries)
     train_summary = tf.summary.merge(training_summaries)
 else:
-    test_output = create_graph(x_test, seq_len_test)
+    test_output = create_graph(x_test, seq_len_test, reuse=False)
     print("test_output.get_shape()"+str(test_output.get_shape()))
     # create get index of each argument
     test_probs = tf.nn.softmax(test_output)
@@ -673,7 +674,7 @@ with tf.Session(config=config) as sess:
                 step += 1
                 # get training accuracy stats
                 #if step % 10 == 0:
-                if step % 1 == 0:
+                if step % 10 == 0:
                     summary_v, val_acc, val_cost1 = sess.run([val_summary,
                                                               val_accuracy,
                                                               val_cost])
