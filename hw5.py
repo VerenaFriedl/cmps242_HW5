@@ -140,7 +140,7 @@ def tokenize(text):
 
 def readTweetData(filename):
     """
-    Read in tweet collection of "HillaryClinton" and "realDonaldTrump" (or "none in case of test data). 
+    Read in tweet collection of "HillaryClinton" and "realDonaldTrump" (or "none in case of test data).
     Other twitter handles would break this function.
     :param filename: File to read tweet data from.
     :return: list with handles and list with tweets; in order of file appearance.
@@ -191,7 +191,7 @@ def tokenizeTrainAndTest(trainData, stopword_path, input_vector_len):
     # local path for the downloaded nltk data
     nltk.data.path.append(stopword_path)
     vectorizer = TfidfVectorizer(input='content', stop_words=stopwords.words('english'), decode_error='ignore',
-                                 norm='l2', max_features=input_vector_len)
+                                 norm='l2', max_features=input_vector_len, analyzer=tokenize)
     X = vectorizer.fit_transform(trainData).toarray()
 
     # split encoded train and test data
