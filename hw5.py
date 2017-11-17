@@ -31,15 +31,14 @@ from nltk.corpus import stopwords
 #nltk.download('punkt')
 from nltk.tokenize.casual import TweetTokenizer
 
-#from sklearn.feature_extraction.text import CountVectorizer
-#from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.feature_extraction.text import TfidfVectorizer
 
 import tensorflow as tf
 from tensorflow.contrib import rnn
 
-#pip install pyenchant
-#pip install splitter
-
+# pip install pyenchant
+# pip install compound-word-splitter
 
 ##########
 # Functions and Classes
@@ -183,7 +182,7 @@ def encodeLabels(list):
     return labels
 
 
-def tokenizeTrainAndTest(trainData, stopword_path):
+def tokenizeTrainAndTest(trainData, stopword_path, input_vector_len):
     """
     Tokenize the tweets.
     :param trainData: list of training tweets.
@@ -192,7 +191,7 @@ def tokenizeTrainAndTest(trainData, stopword_path):
     # local path for the downloaded nltk data
     nltk.data.path.append(stopword_path)
     vectorizer = TfidfVectorizer(input='content', stop_words=stopwords.words('english'), decode_error='ignore',
-                                 norm='l2')
+                                 norm='l2', max_features=input_vector_len)
     X = vectorizer.fit_transform(trainData).toarray()
 
     # split encoded train and test data
@@ -262,7 +261,7 @@ def word_2_vec(sentences, glove, len_glove=50):
 ##########
 
 # Set this to your local path.
-#local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
+local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
 # Working directory
 work_dir = "/Users/andrewbailey/git/cmps242_HW5/"
@@ -274,34 +273,63 @@ trump_index = 1
 # Read in data
 handles, tweets = readTweetData("./train.csv")
 handles_test, tweets_test = readTweetData("./test.csv")
+print(len(handles_test), len(tweets_test))
+with open("/Users/andrewbailey/git/cmps242_HW5/train_tweets", 'w+') as t_f:
+    for sentence in tweets:
+        t_f.write(sentence+'\n')
 
-# with open("/Users/andrewbailey/git/cmps242_HW5/train_tweets", 'w+') as t_f:
-#     for sentence in tweets:
-#         t_f.write(sentence+'\n')
-# Tokenize training and test data
-# X, train_vectorizer = tokenizeTrainAndTest(tweets, local_path_to_nltk_stopwords)
-# X_test = train_vectorizer.transform(tweets_test).toarray()
 
-# (Global Vectors for Word Representation)
 input_vector_len = 25  # depends on glove dataset
-# place to get glove data https://nlp.stanford.edu/projects/glove/
-path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
-glove = create_glove_dict(path_to_glove_twitter)
-print("Glove dict length: "+str(len(glove)))
 
-X, X_seq_len = word_2_vec(tweets, glove, len_glove=input_vector_len)
+token = False
+if token:
+    try:
+        X = np.load("token_train_data_"+str(input_vector_len)+".npy")
+        X_test = np.load("token_test_data_"+str(input_vector_len)+".npy")
+        X_seq_len = np.asarray([len(X[0]) for _, _ in enumerate(X)])
+        test_seq_length = np.asarray([len(X_test[0]) for _, _ in enumerate(X_test)])
+
+    except IOError:
+        # Tokenize training and test data
+        X, train_vectorizer = tokenizeTrainAndTest(tweets, local_path_to_nltk_stopwords, input_vector_len)
+        X_test = train_vectorizer.transform(tweets_test).toarray()
+        X_seq_len = np.asarray([len(X[0]) for _, _ in enumerate(X)])
+        test_seq_length = np.asarray([len(X_test[0]) for _, _ in enumerate(X_test)])
+        np.save("token_train_data_"+str(input_vector_len)+".npy", X)
+        np.save("token_test_data_"+str(input_vector_len)+".npy", X_test)
+
+else:
+    try:
+        X = np.load("glove_train_data_"+str(input_vector_len)+".npy")
+        X_test = np.load("glove_test_seq_data_"+str(input_vector_len)+".npy")
+        X_seq_len = np.load("glove_train_seq_data_"+str(input_vector_len)+".npy")
+        test_seq_length = np.load("glove_test_seq_data_"+str(input_vector_len)+".npy")
+
+    except IOError:
+        # (Global Vectors for Word Representation)
+        # place to get glove data https://nlp.stanford.edu/projects/glove/
+        path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
+        glove = create_glove_dict(path_to_glove_twitter)
+        print("Glove dict length: "+str(len(glove)))
+
+        X, X_seq_len = word_2_vec(tweets, glove, len_glove=input_vector_len)
+        X_test, test_seq_length = word_2_vec(tweets_test, glove, len_glove=input_vector_len)
+
+        np.save("glove_train_data_"+str(input_vector_len)+".npy", X)
+        np.save("glove_test_seq_data_"+str(input_vector_len)+".npy", X_test)
+        np.save("glove_train_seq_data_"+str(input_vector_len)+".npy", X_seq_len)
+        np.save("glove_test_seq_data_"+str(input_vector_len)+".npy", test_seq_length)
+
 print("X shape "+str(X.shape))
-#print(X[0][0])
-#print(X[0][310])
 print("X_seq_len shape "+str(X_seq_len.shape))
 print("max(X_seq_len) "+str(max(X_seq_len)))
 print(X_seq_len)
-X_test, test_seq_length = word_2_vec(tweets_test, glove, len_glove=input_vector_len)
 
 # Encode tweet handles in two binary attributes
 Y = encodeLabels(handles)
 print("Y.shape", Y.shape)
-print(Y)
+print(Y[:,0], Y[:,1])
+print(sum(Y[:,0]), sum(Y[:,1]))
 
 label_vector_len = Y.shape[1]  # 2
 
@@ -312,6 +340,8 @@ X_train = X[len_val_set:]
 X_val = X[:len_val_set]
 Y_train = Y[len_val_set:]
 Y_val = Y[:len_val_set]
+print("h, t, val", sum(Y_val[:,0]), sum(Y_val[:,1]))
+print("h, t, train", sum(Y_train[:,0]), sum(Y_train[:,1]))
 
 print("X_train.shape ", X_train.shape)
 print("X_val.shape ", X_val.shape)
@@ -368,7 +398,7 @@ prefetch_buffer_size = 50
 # number of iterations through all training data
 n_epochs = 10000
 # number of hidden nodes in blstm
-n_hidden = [200]
+n_hidden = [1]
 forget_bias = 5
 learning_rate = 0.001
 #######################
@@ -394,9 +424,15 @@ output_csv = work_dir+"test_submission.csv" #"/home/ubuntu/cmps242_HW5/test_subm
 def create_dataset():
     """Create placeholders for data and iterator"""
     # create placeholders for the values we are going to feed into the network
-    place_X = tf.placeholder(tf.float32, shape=[None, None, input_vector_len], name='Input')
-    place_Seq = tf.placeholder(tf.int32, shape=[None], name='Sequence_Length')
-    place_Y = tf.placeholder(tf.int32, shape=[None, label_vector_len], name='Label')
+    if token:
+        place_X = tf.placeholder(tf.float32, shape=[None, input_vector_len], name='Input')
+        place_Seq = tf.placeholder(tf.int32, shape=[None], name='Sequence_Length')
+        place_Y = tf.placeholder(tf.int32, shape=[None, label_vector_len], name='Label')
+    else:
+        place_X = tf.placeholder(tf.float32, shape=[None, None, input_vector_len], name='Input')
+        place_Seq = tf.placeholder(tf.int32, shape=[None], name='Sequence_Length')
+        place_Y = tf.placeholder(tf.int32, shape=[None, label_vector_len], name='Label')
+
     # create dataset objects which will allow us to use the Dataset class from tensorflow which deals with
     # the queue operations and the flow of data into the graph
     datasetX = tf.data.Dataset.from_tensor_slices(place_X)
@@ -441,6 +477,8 @@ def create_graph(x, seq_len):
     # reshape for blstm layer
     x_shape = x.get_shape().as_list()
     print("x_shape in create_graph "+str(x_shape))
+    if token:
+        x = tf.reshape(x, [-1, input_vector_len, 1])
     # input = tf.reshape(x, shape=[-1, x_shape, 1])
     with tf.variable_scope("LSTM_layers"):
         rnn_layers = [tf.nn.rnn_cell.LSTMCell(size, forget_bias=forget_bias) for size in n_hidden]
