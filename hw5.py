@@ -47,6 +47,7 @@ from tensorflow.contrib import rnn
 # https://gist.github.com/tokestermw/cb87a97113da12acb388
 FLAGS = re.MULTILINE | re.DOTALL
 
+
 def hashtag(text):
     text = text.group()
     hashtag_body = text[1:]
@@ -139,12 +140,10 @@ def tokenize(text):
 
 
 def readTweetData(filename):
-    """
-    Read in tweet collection of "HillaryClinton" and "realDonaldTrump" (or "none in case of test data).
+    """Read in tweet collection of "HillaryClinton" and "realDonaldTrump" (or "none in case of test data).
     Other twitter handles would break this function.
     :param filename: File to read tweet data from.
-    :return: list with handles and list with tweets; in order of file appearance.
-    """
+    :return: list with handles and list with tweets; in order of file appearance."""
     fileH = open(filename, 'r')
     header = fileH.readline().rstrip().split(',')
     handles = []
@@ -152,7 +151,6 @@ def readTweetData(filename):
     goodHandles = ["HillaryClinton", "realDonaldTrump", "none"]
     for line in fileH.readlines():
         splitline = line.rstrip('\n').split(',')
-
         # line starts with twitter handle
         if splitline[0] in goodHandles:
             handles.append(splitline[0])
@@ -160,13 +158,11 @@ def readTweetData(filename):
         # line is part of the last tweet
         else:
             tweets[len(tweets) - 1] = tweets[len(tweets) - 1] + "\n" + ','.join(splitline)
-
     # write to file to test if data is read in correctly (should be exactly the same as the input file)
     # outfileH = open('./out.csv','w')
     # outfileH.write(",".join(header) + "\n")
     # for i in range(0, len(handles)):
     #   outfileH.write(handles[i] + "," + tweets[i]+"\n")
-
     return handles, tweets
 
 
@@ -264,7 +260,7 @@ def word_2_vec(sentences, glove, len_glove=50):
 local_path_to_nltk_stopwords = "/Users/vfriedl/Google Drive/classes/cmps242/nltk_data"
 
 # Working directory
-work_dir = "/home/ubuntu/cmps242_HW5/"
+work_dir = "/Users/andrewbailey/git/cmps242_HW5"
 
 # Global index for clinton and trump
 clinton_index = 0
@@ -279,9 +275,9 @@ print(len(handles_test), len(tweets_test))
   #      t_f.write(sentence+'\n')
 
 
-input_vector_len = 1000  # depends on glove dataset
+input_vector_len = 25  # depends on glove dataset
 
-token = True
+token = False
 if token:
     try:
         X = np.load("token_train_data_"+str(input_vector_len)+".npy")
@@ -308,7 +304,7 @@ else:
     except IOError:
         # (Global Vectors for Word Representation)
         # place to get glove data https://nlp.stanford.edu/projects/glove/
-        path_to_glove_twitter = "/home/ubuntu/cmps242_HW5/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
+        path_to_glove_twitter = "/Users/andrewbailey/git/cmps242_HW5/glove.twitter.27B."+str(input_vector_len)+"d.txt"#"/home/ubuntu/cmps242_HW5/glove.twitter.27B.50d.txt"
         glove = create_glove_dict(path_to_glove_twitter)
         print("Glove dict length: "+str(len(glove)))
 

@@ -1,0 +1,5 @@
+model_checkpoint_path: "/home/ubuntu/cmps242_HW5/logs/3lstm/3lstm_fnn-6770"
+all_model_checkpoint_paths: "/home/ubuntu/cmps242_HW5/logs/3lstm/3lstm_fnn-6740"
+all_model_checkpoint_paths: "/home/ubuntu/cmps242_HW5/logs/3lstm/3lstm_fnn-6750"
+all_model_checkpoint_paths: "/home/ubuntu/cmps242_HW5/logs/3lstm/3lstm_fnn-6760"
+all_model_checkpoint_paths: "/home/ubuntu/cmps242_HW5/logs/3lstm/3lstm_fnn-6770"

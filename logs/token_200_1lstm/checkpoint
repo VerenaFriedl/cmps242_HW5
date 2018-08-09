@@ -1,0 +1,5 @@
+model_checkpoint_path: "/home/ubuntu/cmps242_HW5/logs/token_200_1lstm/token_200_1lstm-640"
+all_model_checkpoint_paths: "/home/ubuntu/cmps242_HW5/logs/token_200_1lstm/token_200_1lstm-610"
+all_model_checkpoint_paths: "/home/ubuntu/cmps242_HW5/logs/token_200_1lstm/token_200_1lstm-620"
+all_model_checkpoint_paths: "/home/ubuntu/cmps242_HW5/logs/token_200_1lstm/token_200_1lstm-630"
+all_model_checkpoint_paths: "/home/ubuntu/cmps242_HW5/logs/token_200_1lstm/token_200_1lstm-640"
